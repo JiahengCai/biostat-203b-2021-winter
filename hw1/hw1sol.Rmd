@@ -110,12 +110,56 @@ Display the number of lines in each data file using a similar loop.
 
 4. Display the first few lines of `admissions.csv.gz`. How many rows are in this data file? How many unique patients (identified by `subject_id`) are in this data file? What are the possible values taken by each of the variable `admission_type`, `admission_location`, `insurance`, `language`, `marital_status`, and `ethnicity`? Also report the count for each unique value of these variables. (Hint: combine Linux commands `zcat`, `head`/`tail`, `awk`, `uniq`, `wc`, and so on.)
 
+Rows in `admissions.csv.gz`
 ```{bash}
 cd /usr/203b-data/mimic-iv/core
 zcat admissions.csv.gz | head
-wc -l admissions.csv.gz
+zcat admissions.csv.gz | wc -l
 ```
 
+Unique patients:
+```{bash}
+cd /usr/203b-data/mimic-iv/core
+zcat admissions.csv.gz | awk -F ',' '{print $1}' |tail -n +2| sort | uniq|wc -l
+```
+
+possible value and count:
+admission type:
+```{bash}
+cd /usr/203b-data/mimic-iv/core
+zcat admissions.csv.gz | awk -F ',' '{print $6}' |tail -n +2| sort | uniq -c
+```
+
+admission location:
+
+```{bash}
+cd /usr/203b-data/mimic-iv/core
+zcat admissions.csv.gz | awk -F ',' '{print $7}' |tail -n +2| sort | uniq -c
+```
+
+insurance:
+```{bash}
+cd /usr/203b-data/mimic-iv/core
+zcat admissions.csv.gz | awk -F ',' '{print $9}' |tail -n +2| sort | uniq -c
+```
+
+language
+```{bash}
+cd /usr/203b-data/mimic-iv/core
+zcat admissions.csv.gz | awk -F ',' '{print $10}' |tail -n +2| sort | uniq -c
+```
+
+marital_status
+```{bash}
+cd /usr/203b-data/mimic-iv/core
+zcat admissions.csv.gz | awk -F ',' '{print $11}' |tail -n +2| sort | uniq -c
+```
+
+ethnicity
+```{bash}
+cd /usr/203b-data/mimic-iv/core
+zcat admissions.csv.gz | awk -F ',' '{print $12}' |tail -n +2| sort | uniq -c
+```
 ## Q3. Who's popular in Price and Prejudice
 
 1. You and your friend just have finished reading *Pride and Prejudice* by Jane Austen. Among the four main characters in the book, Elizabeth, Jane, Lydia, and Darcy, your friend thinks that Darcy was the most mentioned. You, however, are certain it was Elizabeth. Obtain the full text of the novel from <http://www.gutenberg.org/cache/epub/42671/pg42671.txt> and save to your local folder. 
