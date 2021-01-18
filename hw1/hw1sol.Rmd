@@ -41,26 +41,80 @@ sessionInfo()
 
 1. This exercise (and later in this course) uses the [MIMIC-IV data](https://mimic-iv.mit.edu), a freely accessible critical care database developed by the MIT Lab for Computational Physiology. Follow the instructions at <https://mimic-iv.mit.edu/docs/access/> to (1) complete the CITI `Data or Specimens Only Research` course and (2) obtain the PhysioNet credential for using the MIMIC-IV data. Display the verification links to your completion report and completion certificate here. (Hint: The CITI training takes a couple hours and the PhysioNet credentialing takes a couple days; do not leave it to the last minute.)
 
+[Completion Report](https://www.citiprogram.org/verify/?k1c1a1471-8f58-4652-bcad-0c0e43831872-40412197)
+
+[Completion Certificate](https://www.citiprogram.org/verify/?w4a2a0203-d3c9-48d0-a40b-0ca6c96e30df-40412197)
+
 2. The `/usr/203b-data/mimic-iv/` folder on teaching server contains data sets from MIMIC-IV. Refer to <https://mimic-iv.mit.edu/docs/datasets/> for details of data files.  
     ```{bash}
     ls -l /usr/203b-data/mimic-iv
     ```
 Please, do **not** put these data files into Git; they are big. Do **not** copy them into your directory. Do **not** decompress the gz data files. These create unnecessary big files on storage and are not big data friendly practices. Just read from the data folder `/usr/203b-data/mimic-iv` directly in following exercises. 
 
+**Done**
+
     Use Bash commands to answer following questions.
 
 3. Display the contents in the folders `core`, `hosp`, `icu`. What are the functionalities of the bash commands `zcat`, `zless`, `zmore`, and `zgrep`? 
 
+  ```{bash}
+  ls -l /usr/203b-data/mimic-iv/core
+  ls -l /usr/203b-data/mimic-iv/hosp
+  ls -l /usr/203b-data/mimic-iv/icu
+  ```
+  Try 
+  
+  ```{bash,eval=F} 
+  cd /usr/203b-data/mimic-iv/core
+  zcat admissions.csv.gz
+  ```
+  After running in my own linux machine, `zcat` command prints out all content inside `admissions.csv.gz` without decompress the file.
+
+Try
+  ```{bash,eval=F}  
+  zless admissions.csv.gz
+  ```
+  This command is a pager which can be controlled by spacebar and support read backward, also without decompress the file
+  
+  Try 
+  ```{bash,eval=F}
+  zmore admissions.csv.gz
+  ```
+  
+  This command is a pager which can be controlled by spacebar but does not support read backward, also without decompress the file
+  
+  Try
+  ```{bash}
+  cd /usr/203b-data/mimic-iv/core
+  zgrep -c ER admissions.csv.gz
+  ```
+  This command with proper option gives a search result. As this example, how many lines have the word `ER`
+  
 4. What's the output of following bash script?
-    ```{bash, eval=F}
+    ```{bash}
     for datafile in /usr/203b-data/mimic-iv/core/*.gz
       do
         ls -l $datafile
       done
     ```
+    This loop gives detailed information of each `datafile` in the folder `core`
+    
 Display the number of lines in each data file using a similar loop.
 
+```{bash}
+ for datafile in /usr/203b-data/mimic-iv/core/*.gz
+      do
+        wc -l $datafile
+      done
+```
+
 4. Display the first few lines of `admissions.csv.gz`. How many rows are in this data file? How many unique patients (identified by `subject_id`) are in this data file? What are the possible values taken by each of the variable `admission_type`, `admission_location`, `insurance`, `language`, `marital_status`, and `ethnicity`? Also report the count for each unique value of these variables. (Hint: combine Linux commands `zcat`, `head`/`tail`, `awk`, `uniq`, `wc`, and so on.)
+
+```{bash}
+cd /usr/203b-data/mimic-iv/core
+zcat admissions.csv.gz | head
+wc -l admissions.csv.gz
+```
 
 ## Q3. Who's popular in Price and Prejudice
 
