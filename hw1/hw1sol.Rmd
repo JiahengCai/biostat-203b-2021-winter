@@ -168,6 +168,38 @@ zcat admissions.csv.gz | awk -F ',' '{print $12}' |tail -n +2| sort | uniq -c
     ```
 Do **not** put this text file `pride_and_prejudice.txt` in Git. Using a `for` loop, how would you tabulate the number of times each of the four characters is mentioned?
 
+```{bash,eval=F}
+#!/bin/bash
+FILE=$(tr -s '[[:punct:][:space:]]' '\n' < pride_and_prejudice.txt)
+elizacount=0
+janecount=0
+lydiacount=0
+darcycount=0
+for w in $FILE
+do
+        if [[ $w =~ Jane ]]
+        then
+                janecount=$((janecount+1))
+        elif [[ $w =~ Elizabeth ]]
+        then
+                elizacount=$((elizacount+1))
+        elif [[ $w =~ Lydia ]]
+        then
+                lydiacount=$((lydiacount+1))
+        elif [[ $w =~ Darcy ]]
+        then
+                darcycount=$((darcycount+1))
+        fi
+done
+echo Elizabeth count is $elizacount
+echo Jane count is $janecount
+echo Lydia count is $lydiacount
+echo Darcy count is $darcycount
+```
+```{bash}
+./s.sh
+```
+
 2. What's the difference between the following two commands?
     ```{bash eval=FALSE}
     echo 'hello, world' > test1.txt
@@ -176,6 +208,7 @@ Do **not** put this text file `pride_and_prejudice.txt` in Git. Using a `for` lo
     ```{bash eval=FALSE}
     echo 'hello, world' >> test2.txt
     ```
+first one create a new file and write hello world in it. the second one write hello world and append it into text2.txt (if previously created)
 
 3. Using your favorite text editor (e.g., `vi`), type the following and save the file as `middle.sh`:
     ```{bash eval=FALSE}
@@ -190,6 +223,87 @@ Using `chmod` make the file executable by the owner, and run
     ```
 Explain the output. Explain the meaning of `"$1"`, `"$2"`, and `"$3"` in this shell script. Why do we need the first line of the shell script?
 
+`"$1"`, `"$2"`, and `"$3"` are 3 input value for this script. the command ```{bash eval=FALSE}
+    ./middle.sh pride_and_prejudice.txt 20 5
+    ``` input 20 in  `"$1"` and 5 into `"$2"`.
 ### Q4. More fun with Linux
 
 Try these commands in Bash and interpret the results: `cal`, `cal 2021`, `cal 9 1752` (anything unusual?), `date`, `hostname`, `arch`, `uname -a`, `uptime`, `who am i`, `who`, `w`, `id`, `last | head`, `echo {con,pre}{sent,fer}{s,ed}`, `time sleep 5`, `history | tail`.
+
+```{bash}
+cal
+```
+This one gives the calender of current month
+```{bash}
+cal 2021
+```
+This one gives the calender of 2021
+
+```{bash}
+cal 9 1752
+```
+This one gives the calender of September 1752, with missing days
+
+```{bash}
+date
+```
+This command gives the current UTC time
+```{bash}
+hostname
+```
+This one gives the host server name
+```{bash}
+arch
+```
+This one gives the architecture of this server 
+```{bash}
+uname -a
+```
+This one gives detailed information of this server
+```{bash}
+uptime
+```
+This one shows the time since last boot
+```{bash}
+who am i
+```
+This command shows the my user information 
+
+```{bash}
+who
+```
+This command shows information of person currently login this server
+```{bash}
+w
+```
+This command shows detailed information of person currently login this server
+
+```{bash}
+id
+```
+
+This one shows the user id under my name
+
+```{bash}
+last | head
+```
+This one shows the last 10 users logged or still log in this server
+```{bash}
+echo {con,pre}{sent,fer}{s,ed}
+```
+This one prints out the combination from these 3 bracket 
+```{bash}
+time sleep 5
+```
+This command ask the machine to sleep 5 seconds
+```{bash}
+history | tail
+```
+This command shows the last 10 commands inputed in this machine
+
+
+
+
+
+
+
