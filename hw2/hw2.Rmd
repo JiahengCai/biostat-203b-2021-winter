@@ -58,14 +58,18 @@ the popular data.table package. Is there any speed difference?
 ```{r}
 system.time(read.csv(str_c(mimic_path,"/core/admissions.csv.gz")))
 system.time(read_csv(str_c(mimic_path,"/core/admissions.csv.gz")))
-system.time(fread(str_c(mimic_path,"/core/admissions.csv.gz"), sep = ",", header= TRUE))
+system.time(fread(str_c(mimic_path,"/core/admissions.csv.gz"), sep = ",", 
+                  header= TRUE))
 ```
-There is a significant difference between `read.csv` and `read_csv`. Small improvement between `read_csv` and `fread`. 
+There is a significant difference between `read.csv` and `read_csv`. Small 
+improvement between `read_csv` and `fread`. 
 In this homework, we stick to the tidyverse. 
 
 ## Q3. ICU stays
 
-`icustays.csv.gz` (<https://mimic-iv.mit.edu/docs/datasets/icu/icustays/>) contains data about Intensive Care Units (ICU) stays. Summarize following variables using appropriate numerics or graphs:   
+`icustays.csv.gz` (<https://mimic-iv.mit.edu/docs/datasets/icu/icustays/>) 
+contains data about Intensive Care Units (ICU) stays. Summarize following 
+variables using appropriate numerics or graphs:   
 
 - how many unique `stay_id`?  
 - how many unique `subject_id`?  
@@ -128,7 +132,10 @@ icustays %>%
 
 ## Q4. `admission` data
 
-Information of the patients admitted into hospital is available in `admissions.csv.gz`. See <https://mimic-iv.mit.edu/docs/datasets/core/admissions/> for details of each field in this file. Summarize following variables using appropriate graphs. Explain any patterns you observe.   
+Information of the patients admitted into hospital is available in 
+`admissions.csv.gz`. See <https://mimic-iv.mit.edu/docs/datasets/core/admissions/> 
+for details of each field in this file. Summarize following variables using 
+appropriate graphs. Explain any patterns you observe.   
 
 - admission year  
 - admission month  
@@ -146,28 +153,238 @@ Information of the patients admitted into hospital is available in `admissions.c
 - ethnicity  
 - death 
 
-Note it is possible that one patient (uniquely identified by the `subject_id`) is admitted into hospital multiple times. When summarizing some demographic information, it makes sense to summarize based on unique patients. 
+Note it is possible that one patient (uniquely identified by the `subject_id`) 
+is admitted into hospital multiple times. When summarizing some demographic 
+information, it makes sense to summarize based on unique patients. 
+
+```{r}
+admission = read_csv(str_c(mimic_path, '/core/admissions.csv.gz')) %>%
+  print(width = Inf)
+```
+
+Admission year:
+```{r}
+admission %>% 
+  mutate(adyear = year(admittime)) %>% 
+  ggplot() +
+  geom_bar(mapping = aes(x = adyear)) +
+  labs(x = 'admission year')
+```
+
+Admission month:
+```{r}
+admission %>% 
+  mutate(admonth = month(admittime, label = TRUE)) %>% 
+  ggplot(aes(x = admonth)) +
+  geom_bar() +
+  labs(x = 'admission month')
+```
+
+Admission month day:
+```{r}
+admission %>% 
+  mutate(admonthday = mday(admittime)) %>% 
+  ggplot(aes(x = admonthday)) +
+  geom_bar() +
+  labs(x = 'admission month day')
+```
+
+Admission week day:
+```{r}
+admission %>% 
+  mutate(adweekday = wday(admittime), label = TRUE) %>% 
+  ggplot(aes(x = adweekday)) +
+  geom_bar() +
+  labs(x = 'admission week day')
+```
+
+Admission hour:
+```{r}
+admission %>% 
+  mutate(adhour = hour(admittime), label = TRUE) %>% 
+  ggplot(aes(x = adhour)) +
+  geom_bar() +
+  labs(x = 'admission hour')
+```
+
+Unusual: peak is at 12 AM everyday and decreasing until 6 AM. A sudden peak at 7 AM and dramatically decrease. Then, number increase from 8 AM to 5 PM and become smooth. 
+
+Number of death in each year:
+
+first check the difference between `deathtime` and `hospital_expire_flag`
+```{r}
+sum(is.na(admission$deathtime) == FALSE)
+sum(admission$hospital_expire_flag == 1)
+```
+
+Use `hospital_expire_flag`
+```{r}
+admission %>%
+  subset(hospital_expire_flag == 1) %>%
+  mutate(disyear = year(dischtime)) %>% 
+  ggplot(aes(x = disyear)) +
+  geom_bar() +
+  labs(x = 'death year')
+```
+
+Admission type:
+```{r}
+admission %>%
+  ggplot() +
+  geom_bar(mapping = aes(x = admission_type),) +
+  labs(x = 'admission type') +
+  coord_flip()
+```
+
+Number of admissions per patient
+```{r}
+as.data.frame(table(admission$subject_id)) %>%
+  mutate(Freq = case_when(Freq ==1 ~ '=1',
+                          Freq ==2 ~ '=2',
+                          Freq ==3 ~ '=3',
+                          Freq > 3 ~ '>3')) %>%
+  ggplot() +
+  geom_bar(mapping = aes(x = Freq),) +
+  labs(x = 'Number of admissions per patient')
+```
+
+Admission location
+```{r}
+admission %>%
+  ggplot() +
+  geom_bar(mapping = aes(x = admission_location),) +
+  labs(x = 'admission location') +
+  coord_flip()
+```
+
+Discharge location
+```{r}
+admission %>%
+  ggplot() +
+  geom_bar(mapping = aes(x = discharge_location),) +
+  labs(x = 'discharge location') +
+  coord_flip()
+```
+
+insurance (including first visit of same patient):
+```{r}
+admission %>%
+  group_by(subject_id) %>%
+  slice_min(hadm_id) %>%
+  ggplot() +
+  geom_bar(mapping = aes(x = insurance),) +
+  labs(x = 'insurance') +
+  coord_flip()
+```
+
+language (including first visit of same patient):
+```{r}
+admission %>%
+  group_by(subject_id) %>%
+  slice_min(hadm_id) %>%
+  ggplot() +
+  geom_bar(mapping = aes(x = language),) +
+  labs(x = 'language') +
+  coord_flip()
+```
+
+marital status (including first visit of same patient):
+```{r}
+admission %>%
+  group_by(subject_id) %>%
+  slice_min(hadm_id) %>%
+  ggplot() +
+  geom_bar(mapping = aes(x = marital_status),) +
+  labs(x = 'marital status') +
+  coord_flip()
+```
+
+ethnicity (including first visit of same patient):
+```{r} 
+admission %>%
+  group_by(subject_id) %>%
+  slice_min(hadm_id) %>%
+  ggplot() +
+  geom_bar(mapping = aes(x = ethnicity),) +
+  labs(x = 'ethnicity') +
+  coord_flip()
+```
 
 ## Q5. `patient` data
 
-Explore `patients.csv.gz` (<https://mimic-iv.mit.edu/docs/datasets/core/patients/>) and summarize following variables using appropriate numerics and graphs:  
+Explore `patients.csv.gz` (<https://mimic-iv.mit.edu/docs/datasets/core/patients/>) 
+and summarize following variables using appropriate numerics and graphs:  
 
 - `gender`  
 - `anchor_age` (explain pattern you see)
 
+```{r}
+patients = read_csv(str_c(mimic_path, '/core/patients.csv.gz')) %>%
+  print(width = Inf)
+```
+
 ## Q6. Lab results
 
-`labevents.csv.gz` (<https://mimic-iv.mit.edu/docs/datasets/hosp/labevents/>) contains all laboratory measurements for patients. 
+`labevents.csv.gz` (<https://mimic-iv.mit.edu/docs/datasets/hosp/labevents/>) 
+contains all laboratory measurements for patients. 
 
-We are interested in the lab measurements of creatinine (50912), potassium (50971), sodium (50983), chloride (50902), bicarbonate (50882), hematocrit (51221), white blood cell count (51301), glucose (50931), magnesium (50960), calcium (50893), and lactate (50813). Find the `itemid`s of these lab measurements from `d_labitems.csv.gz` and retrieve a subset of `labevents.csv.gz` only containing these items.
+We are interested in the lab measurements of creatinine (50912), potassium 
+(50971), sodium (50983), chloride (50902), bicarbonate (50882), hematocrit 
+(51221), white blood cell count (51301), glucose (50931), magnesium (50960), 
+calcium (50893), and lactate (50813). Find the `itemid`s of these lab 
+measurements from `d_labitems.csv.gz` and retrieve a subset of `labevents.csv.gz` 
+only containing these items.
+
+take a look at the data
+```{r}
+system(str_c("zcat <", shQuote(str_c(mimic_path, "/hosp/labevents.csv.gz")), 
+             " | head "), intern = TRUE)
+```
+
+make a smaller dataset
+```{r}
+if (!file.exists('labevents_icustays.csv.gz')){
+  labevents = fread(str_c(mimic_path, '/hosp/labevents.csv.gz'),
+                    select = c('subject_id', 'hadm_id', 'charttime', 'valuenum'),
+                    nThread = 8)
+  labevents %>%
+    semi_join(icustays, by = c('subject_id', 'hadm_id')) %>%
+    fwrite('labevents_icustays.csv.gz', nThread = 8)
+  }
+labevents = fread('labevents_icustays.csv.gz', nThread = 8)
+labevents %>%
+  as_tibble() %>%
+  print(width = Inf)
+```
+
+```{r}
+dlabitems = read_csv(str_c(mimic_path, '/hosp/d_labitems.csv.gz')) %>%
+  print(width = Inf)
+```
+
+```{r}
+labitem = 'Creatinine'
+creaitine_items = dlabitems %>%
+  filter(str_detect(label, regex(labitem, ignore_case = T))) %>%
+  print(width = Inf)
+```
+
 
 ## Q7. Vitals from chartered events
 
-We are interested in the vitals for ICU patients: heart rate, mean and systolic blood pressure (invasive and noninvasive measurements combined), body temperature, SpO2, and respiratory rate. Find the `itemid`s of these vitals from `d_items.csv.gz` and retrieve a subset of `chartevents.csv.gz` only containing these items.
+We are interested in the vitals for ICU patients: heart rate, mean and systolic 
+blood pressure (invasive and noninvasive measurements combined), body temperature, 
+SpO2, and respiratory rate. Find the `itemid`s of these vitals from `d_items.csv.gz` 
+and retrieve a subset of `chartevents.csv.gz` only containing these items.
 
-`chartevents.csv.gz` (<https://mimic-iv.mit.edu/docs/datasets/icu/chartevents/>) contains all the charted data available for a patient. During their ICU stay, the primary repository of a patient’s information is their electronic chart. The `itemid` variable indicates a single measurement type in the database. The `value` variable is the value measured for `itemid`.
+`chartevents.csv.gz` (<https://mimic-iv.mit.edu/docs/datasets/icu/chartevents/>) 
+contains all the charted data available for a patient. During their ICU stay, the 
+primary repository of a patient’s information is their electronic chart. The 
+`itemid` variable indicates a single measurement type in the database. The `value` 
+variable is the value measured for `itemid`.
 
-`d_items.csv.gz` (<https://mimic-iv.mit.edu/docs/datasets/icu/d_items/>) is the dictionary for the `itemid` in `chartevents.csv.gz`. 
+`d_items.csv.gz` (<https://mimic-iv.mit.edu/docs/datasets/icu/d_items/>) is the 
+dictionary for the `itemid` in `chartevents.csv.gz`. 
 
 ```{r}
 
@@ -189,4 +406,17 @@ and columns contain at least following variables
 - all variables in `patients.csv.gz`  
 - first lab measurements during ICU stay  
 - first vitals measurement during ICU stay  
-- an indicator variable whether the patient died within 30 days of hospital admission  
+- an indicator variable whether the patient died within 30 days of hospital admission 
+
+```{r}
+icustays %>%
+  group_by(subject_id) %>%
+  slice_min(intime) %>%
+  left_join(admission, by = c('subject_id', 'hadm_id')) %>%
+  left_join(patients, by = 'subject_id') %>%
+  mutate(age_at_adm = year(admittime) - anchor_year + anchor_age) %>%
+  filter(age_at_adm >=18) %>%
+  print(width = Inf)
+```
+
+
