@@ -20,12 +20,16 @@ library(data.table)
 library(lubridate)
 ```
 
+    Small change on my own linux system
+  
 ```{r}
 os <- sessionInfo()$running
-if (str_detect(os, "Linux")) {
-  mimic_path <- "/usr/203b-data/mimic-iv"
+if (str_detect(os, "Ubuntu")) {
+  mimic_path <- "/home/odamadafaka/mimic-iv"
 } else if (str_detect(os, "macOS")) {
   mimic_path <- "/Users/huazhou/Documents/Box Sync/MIMIC/mimic-iv-0.4"
+} else if (str_detect(os, "Linux")){
+  mimic_path <- "/usr/h203b-data/mimic-iv"
 }
 ```
 
@@ -33,7 +37,7 @@ Use tidyverse (ggpot2, dplyr) to explore the
 [MIMIC-IV](https://mimic-iv.mit.edu) data introduced in 
 [homework 1](https://ucla-biostat203b-2021winter.github.io/hw/hw1/hw1.html).
 
-```{r}
+```{r,eval=TRUE}
 system(str_c("tree -s -L 2 ", shQuote(mimic_path)), intern = TRUE)
 ```
 
@@ -42,7 +46,7 @@ system(str_c("tree -s -L 2 ", shQuote(mimic_path)), intern = TRUE)
 At this moment, you should already get credentialed on the PhysioNet. 
 Please include a screenshot of your `Data Use Agreement for the MIMIC-IV (v0.4)`.
 
-![Data Use Agreement for the MIMIC-IV (v0.4)](/home/jihcai/biostat-203b-2021-winter/hw2/agreement.png)
+![Data Use Agreement for the MIMIC-IV (v0.4)](/home/odamadafaka/biostat-203b-2021-winter/hw2/agreement.png)
 
 ## Q2. `read.csv` (base R) vs `read_csv` (tidyverse) vs `fread` (data.table)
 
@@ -52,13 +56,11 @@ three programs: `read.csv` in base R, `read_csv` in tidyverse, and `fread` in
 the popular data.table package. Is there any speed difference?
 
 ```{r}
-start_time <- Sys.time()
-read.csv("/usr/203b-data/mimic-iv/core/admissions.csv.gz")
-end_time <- Sys.time()
-end_time - start_time
-
+system.time(read.csv(str_c(mimic_path,"/core/admissions.csv.gz")))
+system.time(read_csv(str_c(mimic_path,"/core/admissions.csv.gz")))
+system.time(fread(str_c(mimic_path,"/core/admissions.csv.gz"), sep = ",", header= TRUE))
 ```
-
+There is a significant difference between `read.csv` and `read_csv`. Small improvement between `read_csv` and `fread`. 
 In this homework, we stick to the tidyverse. 
 
 ## Q3. ICU stays
@@ -70,6 +72,59 @@ In this homework, we stick to the tidyverse.
 - length of ICU stay  
 - first ICU unit  
 - last ICU unit  
+
+First, check data:
+```{r}
+icustays = read_csv(str_c(mimic_path, "/icu/icustays.csv.gz")) %>%
+    print(width = Inf)
+```
+
+Unique `stay_id`:
+```{r}
+icustays %>%
+  distinct(stay_id) %>%
+  nrow
+```
+
+Unique `subject_id`:
+```{r}
+icustays %>%
+  distinct(subject_id) %>%
+  nrow
+```
+
+Summary `los`:
+```{r}
+icustays %>%
+  ggplot() +
+  geom_histogram(mapping = aes(x = los),) + 
+  labs(x = 'length of stay (days)')
+```
+
+```{r}
+icustays %>%
+  ggplot() +
+  geom_boxplot(mapping = aes(x = los),) +
+  labs(x = 'length of stay (days)')
+```
+
+Summary `first ICU unit`:
+```{r}
+icustays %>%
+  ggplot() +
+  geom_bar(mapping = aes(x = first_careunit),) +
+  labs(x = 'first care unit') +
+  coord_flip()
+```
+
+Summary `last ICU unit`:
+```{r}
+icustays %>%
+  ggplot() +
+  geom_bar(mapping = aes(x = last_careunit),) +
+  labs(x = 'last care unit') +
+  coord_flip()
+```
 
 ## Q4. `admission` data
 
@@ -113,6 +168,12 @@ We are interested in the vitals for ICU patients: heart rate, mean and systolic 
 `chartevents.csv.gz` (<https://mimic-iv.mit.edu/docs/datasets/icu/chartevents/>) contains all the charted data available for a patient. During their ICU stay, the primary repository of a patient’s information is their electronic chart. The `itemid` variable indicates a single measurement type in the database. The `value` variable is the value measured for `itemid`.
 
 `d_items.csv.gz` (<https://mimic-iv.mit.edu/docs/datasets/icu/d_items/>) is the dictionary for the `itemid` in `chartevents.csv.gz`. 
+
+```{r}
+
+```
+
+
 
 ## Q8. Putting things together
 
