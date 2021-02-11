@@ -29,7 +29,7 @@ if (str_detect(os, "Ubuntu")) {
 } else if (str_detect(os, "macOS")) {
   mimic_path <- "/Users/huazhou/Documents/Box Sync/MIMIC/mimic-iv-0.4"
 } else if (str_detect(os, "Linux")){
-  mimic_path <- "/usr/h203b-data/mimic-iv"
+  mimic_path <- "/usr/203b-data/mimic-iv"
 }
 ```
 
@@ -47,6 +47,7 @@ At this moment, you should already get credentialed on the PhysioNet.
 Please include a screenshot of your `Data Use Agreement for the MIMIC-IV (v0.4)`.
 
 ![Data Use Agreement for the MIMIC-IV (v0.4)](/home/odamadafaka/biostat-203b-2021-winter/hw2/agreement.png)
+![Data Use Agreement for the MIMIC-IV (v0.4)](/home/jihcai/biostat-203b-2021-winter/hw2/agreement.png)
 
 ## Q2. `read.csv` (base R) vs `read_csv` (tidyverse) vs `fread` (data.table)
 
@@ -58,7 +59,7 @@ the popular data.table package. Is there any speed difference?
 ```{r}
 system.time(read.csv(str_c(mimic_path,"/core/admissions.csv.gz")))
 system.time(read_csv(str_c(mimic_path,"/core/admissions.csv.gz")))
-system.time(fread(str_c(mimic_path,"/core/admissions.csv.gz"), sep = ",", 
+system.time(fread(str_c(mimic_path,"/core/admissions.csv.gz"), sep = ",",
                   header= TRUE))
 ```
 There is a significant difference between `read.csv` and `read_csv`. Small 
