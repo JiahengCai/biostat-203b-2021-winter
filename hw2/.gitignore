@@ -1,2 +1,7 @@
 hw2_files
 labevents_icustays.csv.gz
+labevents_filtered_itemid.csv.gz
+chartevents_filtered_itemid.csv.gz
+q8soluptovm.csv.gz
+q8soluptolab.csv.gz
+q8finalsol.csv.gz
