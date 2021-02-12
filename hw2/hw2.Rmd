@@ -1,6 +1,6 @@
 ---
 title: "Biostat 203B Homework 2"
-subtitle: Due Feb 5 @ 11:59PM
+subtitle: Due Feb 12 @ 11:59PM
 author: Jiaheng Cai
 output: 
   html_document:
@@ -20,8 +20,7 @@ library(data.table)
 library(lubridate)
 ```
 
-    Small change on my own linux system
-  
+Small change on my own linux system:
 ```{r}
 os <- sessionInfo()$running
 if (str_detect(os, "Ubuntu")) {
@@ -29,7 +28,7 @@ if (str_detect(os, "Ubuntu")) {
 } else if (str_detect(os, "macOS")) {
   mimic_path <- "/Users/huazhou/Documents/Box Sync/MIMIC/mimic-iv-0.4"
 } else if (str_detect(os, "Linux")){
-  mimic_path <- "/usr/203b-data/mimic-iv"
+  mimic_path <- "/usr/h203b-data/mimic-iv"
 }
 ```
 
@@ -47,7 +46,6 @@ At this moment, you should already get credentialed on the PhysioNet.
 Please include a screenshot of your `Data Use Agreement for the MIMIC-IV (v0.4)`.
 
 ![Data Use Agreement for the MIMIC-IV (v0.4)](/home/odamadafaka/biostat-203b-2021-winter/hw2/agreement.png)
-![Data Use Agreement for the MIMIC-IV (v0.4)](/home/jihcai/biostat-203b-2021-winter/hw2/agreement.png)
 
 ## Q2. `read.csv` (base R) vs `read_csv` (tidyverse) vs `fread` (data.table)
 
@@ -59,11 +57,12 @@ the popular data.table package. Is there any speed difference?
 ```{r}
 system.time(read.csv(str_c(mimic_path,"/core/admissions.csv.gz")))
 system.time(read_csv(str_c(mimic_path,"/core/admissions.csv.gz")))
-system.time(fread(str_c(mimic_path,"/core/admissions.csv.gz"), sep = ",",
+system.time(fread(str_c(mimic_path,"/core/admissions.csv.gz"), sep = ",", 
                   header= TRUE))
 ```
 There is a significant difference between `read.csv` and `read_csv`. Small 
 improvement between `read_csv` and `fread`. 
+
 In this homework, we stick to the tidyverse. 
 
 ## Q3. ICU stays
@@ -158,6 +157,7 @@ Note it is possible that one patient (uniquely identified by the `subject_id`)
 is admitted into hospital multiple times. When summarizing some demographic 
 information, it makes sense to summarize based on unique patients. 
 
+First, take a look at the dataset:
 ```{r}
 admission = read_csv(str_c(mimic_path, '/core/admissions.csv.gz')) %>%
   print(width = Inf)
@@ -267,7 +267,7 @@ admission %>%
   coord_flip()
 ```
 
-insurance (including first visit of same patient):
+Insurance (including first visit of same patient):
 ```{r}
 admission %>%
   group_by(subject_id) %>%
@@ -278,7 +278,7 @@ admission %>%
   coord_flip()
 ```
 
-language (including first visit of same patient):
+Language (including first visit of same patient):
 ```{r}
 admission %>%
   group_by(subject_id) %>%
@@ -289,7 +289,7 @@ admission %>%
   coord_flip()
 ```
 
-marital status (including first visit of same patient):
+Marital status (including first visit of same patient):
 ```{r}
 admission %>%
   group_by(subject_id) %>%
@@ -300,7 +300,7 @@ admission %>%
   coord_flip()
 ```
 
-ethnicity (including first visit of same patient):
+Ethnicity (including first visit of same patient):
 ```{r} 
 admission %>%
   group_by(subject_id) %>%
@@ -308,6 +308,15 @@ admission %>%
   ggplot() +
   geom_bar(mapping = aes(x = ethnicity),) +
   labs(x = 'ethnicity') +
+  coord_flip()
+```
+
+Death:
+```{r}
+admission %>%
+  ggplot() +
+  geom_bar(mapping = aes(x = hospital_expire_flag),) +
+  labs(x = 'death') +
   coord_flip()
 ```
 
@@ -319,12 +328,13 @@ and summarize following variables using appropriate numerics and graphs:
 - `gender`  
 - `anchor_age` (explain pattern you see)
 
+First, read the data:
 ```{r}
 patients = read_csv(str_c(mimic_path, '/core/patients.csv.gz')) %>%
   print(width = Inf)
 ```
 
-gender: 
+`gender`: 
 ```{r} 
 patients %>%
   ggplot() +
@@ -333,13 +343,17 @@ patients %>%
   coord_flip()
 ```
 
-anchor_age:
+`anchor_age`:
 ```{r} 
 patients %>%
   ggplot(aes(x = anchor_age)) +
   geom_bar() +
   labs(x = 'anchor_age')
 ```
+
+Pattern: there is a significantly large number of 0 in the `anchor_age` variable.
+This might be caused by missing data or input error. 
+
 ## Q6. Lab results
 
 `labevents.csv.gz` (<https://mimic-iv.mit.edu/docs/datasets/hosp/labevents/>) 
@@ -352,13 +366,13 @@ calcium (50893), and lactate (50813). Find the `itemid`s of these lab
 measurements from `d_labitems.csv.gz` and retrieve a subset of `labevents.csv.gz` 
 only containing these items.
 
-take a look at the data
+Take a look at the data:
 ```{r}
 system(str_c("zcat <", shQuote(str_c(mimic_path, "/hosp/labevents.csv.gz")), 
              " | head "), intern = TRUE)
 ```
 
-make a smaller dataset
+Make a smaller dataset:
 ```{r}
 if (!file.exists('labevents_icustays.csv.gz')){
   labevents = fread(str_c(mimic_path, '/hosp/labevents.csv.gz'),
@@ -375,12 +389,9 @@ labevents %>%
   print(width = Inf)
 ```
 
+Get `itemid`s: 
 ```{r}
-dlabitems = read_csv(str_c(mimic_path, '/hosp/d_labitems.csv.gz')) %>%
-  print(width = Inf)
-```
-
-```{r}
+dlabitems = read_csv(str_c(mimic_path, '/hosp/d_labitems.csv.gz'))
 labitems = c('Creatinine', 'potassium', 'sodium', 'chloride', 'bicarbonate', 
              'hematocrit', 'white blood cell', 'glucose', 'magnesium',
              'calcium', 'lactate')
@@ -400,14 +411,11 @@ itemid = labevents %>%
 itemids[i] = itemid
 i = i + 1
 }
-```
-
-```{r}
 rename = tibble(itemid = itemids, labitem = labitems) %>%
   print()
 ```
 
-subset of labevent_key items:
+Subset of `labevent` items:
 ```{r}
 labevents_itids = labevents %>% 
   subset(itemid %in% itemids) %>%
@@ -430,13 +438,13 @@ variable is the value measured for `itemid`.
 `d_items.csv.gz` (<https://mimic-iv.mit.edu/docs/datasets/icu/d_items/>) is the 
 dictionary for the `itemid` in `chartevents.csv.gz`. 
 
-read the chartevent dictionary
+Read the `chartevent` dictionary:
 ```{r}
 dchartitems = read_csv(str_c(mimic_path, '/icu/d_items.csv.gz')) %>%
   print(width = Inf)
 ```
 
-inspect itemids corresponding to items we want:
+Inspect `itemid`s corresponding to items we want:
 ```{r}
 for (x in c('heart rate', 'blood pressure mean', 'systolic', 'temperature',
             'SpO2', 'respiratory rate')){
@@ -447,7 +455,7 @@ for (x in c('heart rate', 'blood pressure mean', 'systolic', 'temperature',
   }
 ```
 
-filter the desired chart items (choose for routine vital sign):
+Filter the desired `chartevent` items (choose for routine vital sign):
 ```{r}
 chartitem_itemid = dchartitems %>%
   filter(itemid %in% c(220045, 220052, 220181, 220050, 220179, 223761, 226253, 
@@ -455,13 +463,13 @@ chartitem_itemid = dchartitems %>%
   print(width = Inf)
 ```
 
-take a look at the data
+Take a look at the `chartevent` data:
 ```{r}
 system(str_c("zcat < ", shQuote(str_c(mimic_path, "/icu/chartevents.csv.gz")), 
              " | head "), intern = TRUE)
 ```
 
-trial in bash (working on my own linux machine):
+Make a smaller set of `chartevent` in bash (working on my own linux machine):
 ```{bash,eval=F}
 zcat < /home/odamadafaka/mimic-iv/icu/chartevents.csv.gz | awk -F, '{OFS = ","} 
 {if ($6 == 220045 || $6 == 220050 || $6 == 220052 || $6 == 220179 || 
@@ -469,25 +477,17 @@ $6 == 220181 || $6 == 220210 || $6 == 223761 || $6 == 226253) print $1, $2,
 $3, $4, $6, $8}' | gzip > chartevents_filtered_itemid.csv.gz
 ```
 
-```{bash,eval=F}
-zcat < /home/odamadafaka/mimic-iv/hosp/labevents.csv.gz | awk -F, '{OFS = ","} {if ($5 == 50912 || $5 == 50971 || $5 == 50983 || $5 == 50902 || $5 == 50882 || $5 == 51221 || $5 == 51301 || $5 == 50931 || $5 == 50960 || $5 == 50893 || $5 == 50813) print $2, $3, $5, $6, $9}' | gzip > labevents_filtered_itemid.csv.gz
-```
-
-read the data into tibble:
+Read the data into tibble:
 ```{r}
-system.time(chartevents <- fread('chartevents_filtered_itemid.csv.gz', 
-                                 header = FALSE, col.names = c('subject_id',
-                                                               'hadm_id',
-                                                               'stay_id',
-                                                               'charttime',
-                                                               'itemid',
-                                                               'valuenum'),
-                                 nThread = 8) %>%
-              as_tibble() %>%
-              mutate_at(c('subject_id', 'hadm_id', 'stay_id', 'itemid'), 
-                        as.numeric) %>%
-              mutate(charttime = ymd_hms(charttime)) %>%
-              print(width = Inf))
+chartevents = fread('chartevents_filtered_itemid.csv.gz',
+                    header = FALSE, col.names = c('subject_id', 'hadm_id', 
+                                                  'stay_id', 'charttime',
+                                                  'itemid', 'valuenum'), 
+                    nThread = 8) %>%
+  as_tibble() %>%
+  mutate_at(c('subject_id', 'hadm_id', 'stay_id', 'itemid'), as.numeric) %>%
+  mutate(charttime = ymd_hms(charttime)) %>%
+  print(width = Inf)
 ```
 
 ## Q8. Putting things together
@@ -506,18 +506,20 @@ and columns contain at least following variables
 - first vitals measurement during ICU stay  
 - an indicator variable whether the patient died within 30 days of hospital admission 
 
+Join with `icustays`, `admission`, `patients` and filter down adults:
 ```{r}
 q8sol = icustays %>%
   group_by(subject_id) %>%
+  # get the first ICU stay
   filter(rank(intime) == 1) %>%
   ungroup() %>%
   left_join(admission, by = c('subject_id', 'hadm_id')) %>%
   left_join(patients, by = 'subject_id') %>%
   mutate(age_at_adm = year(admittime) - anchor_year + anchor_age) %>%
-  filter(age_at_adm > 18) %>%
-  print(width = Inf)
+  filter(age_at_adm > 18)
 ```
 
+Join with `labevents`:
 ```{r}
 q8sol = 
   labevents_itids %>%
@@ -527,33 +529,22 @@ q8sol =
   filter(charttime >= intime) %>%
   group_by(subject_id, itemid) %>%
   arrange(charttime, .by_group = TRUE) %>%
+  # keep the first lab event
   slice_head(n = 1) %>%
   select(-charttime, -intime) %>%
   spread(key = itemid, value = valuenum) %>%
   right_join(q8sol, by = c('subject_id', 'hadm_id')) %>%
   ungroup() %>%
-  rename_at(vars(as.character(rename$itemid)), ~rename$labitem) %>%
-  print(width = Inf)
+  rename_at(vars(as.character(rename$itemid)), ~rename$labitem)
 ```
 
-
-
-
-
-```{r}
-chartevents = fread('chartevents_filtered_itemid.csv.gz', 
-                    header = FALSE, col.names = c('subject_id',
-                                                  'hadm_id',
-                                                  'stay_id',
-                                                  'charttime',
-                                                  'itemid',
-                                                  'valuenum'),
-                    nThread = 8) %>%
-  as_tibble() %>%
-  mutate_at(c('subject_id', 'hadm_id', 'stay_id', 'itemid'), as.numeric) %>%
-  mutate(charttime = ymd_hms(charttime))
+Anti-panic step:
+```{r,eval=FALSE}
+q8sol %>%
+  fwrite('q8UptoLabEve.csv.gz', nThread = 8)
 ```
 
+Join with `chartevents`:
 ```{r}
 q8sol = chartevents %>%
   select(-stay_id) %>%
@@ -563,38 +554,32 @@ q8sol = chartevents %>%
   filter(charttime >= intime) %>%
   group_by(subject_id, itemid) %>%
   arrange(charttime, .by_group = TRUE) %>%
+  # get first chart event
   slice_head(n = 1) %>%
   select(-charttime, -intime) %>%
   spread(key = itemid, value = valuenum) %>%
   right_join(q8sol, by = c('subject_id', 'hadm_id')) %>%
   ungroup() %>%
-  rename_at(vars(as.character(chartitem_itemid$itemid)), ~chartitem_itemid$label) %>%
-  print(width = Inf)
+  rename_at(vars(as.character(chartitem_itemid$itemid)), ~chartitem_itemid$label)
 ```
 
-precaution step:
+Anti-panic step:
 ```{r,eval=FALSE}
 q8sol %>%
-  fwrite('q8soluptovm.csv.gz', nThread = 8)
+  fwrite('q8UptoChrEve.csv.gz', nThread = 8)
 ```
 
+Create a new variable `DieIn30Days`
 ```{r}
 q8sol$DieIn30Days = 'No'
-for (i in 1:nrow(q8sol)){
-  if (q8sol$hospital_expire_flag[i] == 1 & q8sol$los[i] <= 30){
-    q8sol$DieIn30Days[i] = 'yes'
-  }
-  else{
-    q8sol$DieIn30Days[i] = 'no'
-  }
-} 
+q8sol$DieIn30Days[q8sol$hospital_expire_flag == 1] = 'Yes'
 print(q8sol, width = Inf)
 ```
 
-precaution step:
+Anti-panic step:
 ```{r,eval=FALSE}
 q8sol %>%
   fwrite('q8finalsol.csv.gz', nThread = 8)
 ```
 
-
+End of HW2.
