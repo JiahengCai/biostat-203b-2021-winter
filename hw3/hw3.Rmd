@@ -21,6 +21,7 @@ library(RPostgreSQL)
 library(tidyverse)
 library(lubridate)
 library(data.table)
+library(dplyr)
 ```
 
 ## Q0. Create MIMIC-IV PostgreSQL database
@@ -107,14 +108,14 @@ admissions_tble <- tbl(con, Id(schema = "mimic_core", table = "admissions")) %>%
 
 6. Connect to the `mimic_labevents_icu` table.
 ```{r}
-# TODO
-# labevents_tble <-
+labevents_tble <- tbl(con, Id(schema = "mimic_hosp", table = "labevents")) %>%
+  print(width = Inf)
 ```
 
 7. Connect to `mimic_chartevents_icu` table.
 ```{r}
-# TODO
-# chartevents_tble <- 
+chartevents_tble <- tbl(con, Id(schema = "mimic_icu", table = "chartevents")) %>%
+  print(width = Inf)
 ```
 
 8. Put things together. Using one chain of pipes `%>%` to perform following data wrangling steps: (i) keep only the first ICU stay of each unique patient, (ii) merge in admissions and patients tables, (iii) keep adults only (age at admission >= 18), (iv) merge in the labevents and chartevents tables, (v) display the SQL query, (vi) collect SQL query result into memory as a tibble, (vii) create an indicator for 30-day mortality, (viii) save the final tibble to an `icu_cohort.rds` R data file in the `mimiciv_shiny` folder.
@@ -127,8 +128,68 @@ if (!dir.exists("mimiciv_shiny")) {
 ```
 
 ```{r}
-# TODO
-# icustays_tble %>%
+sol_tble = icustays_tble %>% 
+  group_by(subject_id) %>%
+  filter(rank(intime) == 1) %>%
+  ungroup() %>%
+  left_join(admissions_tble, by = c('subject_id', 'hadm_id')) %>%
+  left_join(patients_tble, by = 'subject_id') %>%
+  mutate(age_at_adm = year(admittime) - anchor_year + anchor_age) %>%
+  filter(age_at_adm > 18)%>%
+  print(width = Inf)
+```
+
+```{r}
+labevents_icu_tble = labevents_tble %>%
+    semi_join(icustays_tble, by = c('subject_id', 'hadm_id')) %>%
+  print(width=Inf)
+```
+
+Get `itemid`s: 
+```{r}
+dlabitems = read_csv('/home/odamadafaka/mimic-iv-data/hosp/d_labitems.csv.gz')
+labitems = c('Creatinine', 'potassium', 'sodium', 'chloride', 'bicarbonate', 
+             'hematocrit', 'white blood cell', 'glucose', 'magnesium',
+             'calcium', 'lactate')
+itemids = rep(0, length(labitems))
+i = 1
+for (x in labitems){
+  print(str_interp('searching for ${x}$'))
+  items_list = dlabitems %>%
+  filter(str_detect(label, regex(x, ignore_case = T))) %>%
+  .$itemid
+itemid = labevents_icu_tble %>%
+  filter(itemid %in% items_list) %>%
+  count(itemid) %>%
+  slice_max(n,1) %>%
+  select(1,1) %>%data.frame()%>%.$itemid
+itemids[i] = itemid
+i = i + 1
+}
+rename = tibble(itemid = itemids, labitem = labitems) %>%
+print()
+```
+
+```{r}
+labevents_itids_tble = labevents_icu_tble %>% 
+  subset(itemid %in% itemids) %>%
+  print()
+```
+
+```{r}
+  labevents_itids_tble %>%
+  semi_join(sol_tble, by = c('subject_id', 'hadm_id')) %>%
+  left_join(select(sol_tble, subject_id, hadm_id, intime),
+            by = c('subject_id', 'hadm_id')) %>%
+  filter(charttime >= intime) %>%
+  group_by(subject_id, itemid) %>%
+  # keep the first lab event
+  slice_min(charttime,n = 1) %>%
+  select(-charttime, -intime) %>%
+  spread(key = itemid, value = valuenum) %>%
+  right_join(sol_tble, by = c('subject_id', 'hadm_id')) %>%
+  ungroup() %>%
+  rename_at(vars(as.character(rename$itemid)), ~rename$labitem)
 ```
 
 
