@@ -21,7 +21,6 @@ library(RPostgreSQL)
 library(tidyverse)
 library(lubridate)
 library(data.table)
-library(dplyr)
 ```
 
 ## Q0. Create MIMIC-IV PostgreSQL database
@@ -44,6 +43,170 @@ This section documents how to install PostgreSQL and create a database `mimiciv`
     5. Set up primary keys `psql -d mimiciv -f constraint.sql`. This takes less than one hour.  
     6. Deposit a subset of labevents data, which contains only ICU stays and the lab items we need, to a table `mimic-labevent-icu` in the `mimiciv` database.
     7. Deposit a subset of chartevents data, which contains only ICU stays and the chart events we need, to a table `mimic-chartevent-icu` in the `mimiciv` database.
+    
+Steps for 7&8:
+```{r, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+is_teaching_server = Sys.info()[["nodename"]] == "ucla-biostat-203b"
+```
+
+Connect to the mimiciv PostgreSQL database.
+```{r}
+# Load configuration settings
+# host  <- '127.0.0.1'
+# port  <- '5432'
+user  <- ifelse(Sys.info()[["nodename"]] == "ucla-biostat-203b", 
+                'postgres', # on teaching server
+                'odamadafaka')  # on my MacBook
+password <- ifelse(Sys.info()[["nodename"]] == "ucla-biostat-203b",
+                   'postgres', # on teaching server
+                   '19981226Cai')  # on my MacBook   
+dbname <- 'mimiciv'
+# Connect to the database using the configuration settings
+(con <- dbConnect(RPostgreSQL::PostgreSQL(), 
+                  dbname = dbname,
+                  user = user, 
+                  password = password))
+```
+
+Set up paths to mimic data.
+```{r}
+os <- sessionInfo()$running
+if (str_detect(os, "Linux")) {
+  mimiciv_path <- "/usr/203b-data/mimic-iv/"
+  mimiciv_derived <- "/usr/203b-data/mimic-iv-derived-data/"
+} else if (str_detect(os, "Ubuntu")) {
+  mimiciv_path <- "/home/odamadafaka/mimic-iv-data/"
+  mimiciv_derived <- "/home/odamadafaka/mimic-iv-derived-data/"
+}
+```
+
+Read in the csv.gz file that contains only items we are interested.
+```{r}
+labevents_filtered_itemid_tib <-
+  fread(str_c(mimiciv_derived, "labevents_filtered_itemid.csv.gz"),
+        col.names = c("subject_id", 
+                      "hadm_id", 
+                      "lab_itemid", 
+                      "lab_charttime", 
+                      "valuenum")) %>%
+  as_tibble() %>%
+  mutate(lab_charttime = ymd_hms(lab_charttime)) %>%
+  print(width = Inf)
+```
+
+Read in the ICU stays data.
+```{r}
+icustays_tib <- 
+  fread(str_c(mimiciv_path, "icu/icustays.csv.gz")) %>%
+  as_tibble() %>%
+  mutate(intime = ymd_hms(intime), outtime = ymd_hms(outtime)) %>%
+  print(width = Inf)
+```
+
+Create a tibble with wanted lab items and their descriptions.
+```{r}
+lab_itemid_desc_tib <- 
+  tibble(labitemid = c(50912, 50971, 50983, 50902, 50882, 51221, 
+                       51301, 50931, 50960, 50893, 50813),
+         labitemdesc = c("creatinine", "potassium", "sodium", "chloride", 
+                         "bicarbonate", "hematocrit", "wbc", "glucose", 
+                         "magnesium", "calcium", "lactate")) %>%
+  print()
+```
+
+Only keep the first lab events during ICU stays. Deposit into `mimiciv` database.
+```{r}
+labevents_filtered_itemid_tib %>%
+  # only keep subject_id+hadm_id that are in icustays_uniq_tble
+  semi_join(icustays_tib, by = c("subject_id", "hadm_id")) %>%
+  # pull in the intime of that ICU stay
+  left_join(select(icustays_tib, subject_id, hadm_id, intime), 
+            by = c("subject_id", "hadm_id")) %>%
+  # only keep lab items after ICU intime
+  filter(lab_charttime >= intime) %>%
+  # group by itemid
+  group_by(subject_id, lab_itemid) %>%
+  # only keep the first chartime for each item
+  # slice_min(lab_charttime, n = 1) %>% # this function takes forever
+  # top_n(-1, charttime) %>% # this function takes forever
+  arrange(lab_charttime, .by_group = TRUE) %>%
+  slice_head(n = 1) %>%
+  # do not need charttime and intime anymore
+  select(-lab_charttime, -intime) %>%
+  ungroup() %>%
+  # spread
+  pivot_wider(names_from = lab_itemid, values_from = valuenum) %>%
+  # more informative column names
+  rename_at(vars(as.character(lab_itemid_desc_tib$labitemid)), 
+            ~lab_itemid_desc_tib$labitemdesc) %>%
+  print(width = Inf) %>%
+  dbWriteTable(con, "mimic_labevents_icu", ., overwite = TRUE, row.names = FALSE)
+```
+
+Read in the shrunk chartevents data.
+```{r}
+chartevents_filtered_itemid_tib <-
+  fread(str_c(mimiciv_derived, "chartevents_filtered_itemid.csv.gz"),
+        col.names = c("subject_id", 
+                      "hadm_id", 
+                      "stay_id", 
+                      "vitals_charttime", 
+                      "vitals_itemid", 
+                      "valuenum")) %>%
+  as_tibble() %>%
+  mutate(vitals_charttime = ymd_hms(vitals_charttime)) %>%
+  print(width = Inf)
+```
+
+```{r}
+vitals_itemid_desc_tib <- 
+  tibble(vitalitemid = c(220045, 220052, 220181, 220179, 
+                         220050, 223761, 220210),
+         vitalitemdesc = c("heart_rate", 
+                           "arterial_blood_pressure_mean",
+                           "non_invasive_blood_pressure_mean", 
+                           "non_invasive_blood_pressure_systolic",
+                           "arterial_blood_pressure_systolic",
+                           "temperature_fahrenheit",
+                           "respiratory_rate")) %>%
+  print()
+```
+
+Deposit into `mimiciv` database.
+```{r}
+chartevents_filtered_itemid_tib %>%
+  # only keep subject_id+hadm_id that are in icustays_uniq_tble
+  semi_join(icustays_tib, by = c("subject_id", "hadm_id")) %>%
+  # pull in the intime of that ICU stay
+  left_join(select(icustays_tib, subject_id, hadm_id, intime), 
+            by = c("subject_id", "hadm_id")) %>%
+  # only keep lab items after ICU intime
+  filter(vitals_charttime >= intime) %>%
+  # group by itemid
+  group_by(subject_id, vitals_itemid) %>%
+  # only keep the first chartime for each item
+  # slice_min(lab_charttime, n = 1) %>% # this function takes forever
+  # top_n(-1, charttime) %>% # this function takes forever
+  arrange(vitals_charttime, .by_group = TRUE) %>%
+  slice_head(n = 1) %>%
+  # do not need charttime and intime anymore
+  select(-vitals_charttime, -intime) %>%
+  ungroup() %>%
+  # spread
+  pivot_wider(names_from = vitals_itemid, values_from = valuenum) %>%
+  # more informative column names
+  rename_at(vars(as.character(vitals_itemid_desc_tib$vitalitemid)), 
+            ~vitals_itemid_desc_tib$vitalitemdesc) %>%  
+  print(width = Inf) %>%
+  dbWriteTable(con, "mimic_chartevents_icu", ., overwite = TRUE, row.names = FALSE)
+```
+
+Disconnect database and clear workspace.
+```{r}
+dbDisconnect(con)
+rm(list = ls())
+```
 
 ## Q1. Compile the ICU cohort in HW2 Q8 from the PostgreSQL database `mimiciv`. 
 
@@ -108,13 +271,13 @@ admissions_tble <- tbl(con, Id(schema = "mimic_core", table = "admissions")) %>%
 
 6. Connect to the `mimic_labevents_icu` table.
 ```{r}
-labevents_tble <- tbl(con, Id(schema = "mimic_hosp", table = "labevents")) %>%
+labevents_tble <- tbl(con, Id(schema = "public", table = "mimic_labevents_icu")) %>%
   print(width = Inf)
 ```
 
 7. Connect to `mimic_chartevents_icu` table.
 ```{r}
-chartevents_tble <- tbl(con, Id(schema = "mimic_icu", table = "chartevents")) %>%
+chartevents_tble <- tbl(con, Id(schema = "public", table = "mimic_chartevents_icu")) %>%
   print(width = Inf)
 ```
 
@@ -128,70 +291,25 @@ if (!dir.exists("mimiciv_shiny")) {
 ```
 
 ```{r}
-sol_tble = icustays_tble %>% 
+icu_cohort = icustays_tble %>% 
   group_by(subject_id) %>%
   filter(rank(intime) == 1) %>%
   ungroup() %>%
   left_join(admissions_tble, by = c('subject_id', 'hadm_id')) %>%
   left_join(patients_tble, by = 'subject_id') %>%
   mutate(age_at_adm = year(admittime) - anchor_year + anchor_age) %>%
-  filter(age_at_adm > 18)%>%
-  print(width = Inf)
-```
-
-```{r}
-labevents_icu_tble = labevents_tble %>%
-    semi_join(icustays_tble, by = c('subject_id', 'hadm_id')) %>%
-  print(width=Inf)
-```
-
-Get `itemid`s: 
-```{r}
-dlabitems = read_csv('/home/odamadafaka/mimic-iv-data/hosp/d_labitems.csv.gz')
-labitems = c('Creatinine', 'potassium', 'sodium', 'chloride', 'bicarbonate', 
-             'hematocrit', 'white blood cell', 'glucose', 'magnesium',
-             'calcium', 'lactate')
-itemids = rep(0, length(labitems))
-i = 1
-for (x in labitems){
-  print(str_interp('searching for ${x}$'))
-  items_list = dlabitems %>%
-  filter(str_detect(label, regex(x, ignore_case = T))) %>%
-  .$itemid
-itemid = labevents_icu_tble %>%
-  filter(itemid %in% items_list) %>%
-  count(itemid) %>%
-  slice_max(n,1) %>%
-  select(1,1) %>%data.frame()%>%.$itemid
-itemids[i] = itemid
-i = i + 1
-}
-rename = tibble(itemid = itemids, labitem = labitems) %>%
-print()
-```
-
-```{r}
-labevents_itids_tble = labevents_icu_tble %>% 
-  subset(itemid %in% itemids) %>%
+  filter(age_at_adm >= 18)%>%
+  left_join(labevents_tble, by = c('subject_id', 'hadm_id'))%>%
+  left_join(chartevents_tble, by = c('subject_id', 'hadm_id'))%>%
+  show_query()%>%
+  as_tibble()%>%
+  group_by(subject_id) %>%
+  slice(1) %>%
+  ungroup() %>%
+  mutate(de30 = ifelse(.$hospital_expire_flag == 1,'yes','no'))%>%
+  saveRDS(str_c('/home/odamadafaka/biostat-203b-2021-winter/hw3/mimiciv_shiny/icu_cohort.rds'))%>%
   print()
 ```
-
-```{r}
-  labevents_itids_tble %>%
-  semi_join(sol_tble, by = c('subject_id', 'hadm_id')) %>%
-  left_join(select(sol_tble, subject_id, hadm_id, intime),
-            by = c('subject_id', 'hadm_id')) %>%
-  filter(charttime >= intime) %>%
-  group_by(subject_id, itemid) %>%
-  # keep the first lab event
-  slice_min(charttime,n = 1) %>%
-  select(-charttime, -intime) %>%
-  spread(key = itemid, value = valuenum) %>%
-  right_join(sol_tble, by = c('subject_id', 'hadm_id')) %>%
-  ungroup() %>%
-  rename_at(vars(as.character(rename$itemid)), ~rename$labitem)
-```
-
 
 Close database connection and clear workspace.
 ```{r}
