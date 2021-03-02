@@ -104,7 +104,8 @@ server <- function(input, output){
 'Arterial Blood Pressure Systolic' = icu_cohort$arterial_blood_pressure_systolic,
 'Arterial Blood Pressure Mean' = icu_cohort$arterial_blood_pressure_mean,
                                'Dead in 30 days' = icu_cohort$de30)
-        summary(datasetInput%>%as.data.frame())})
+        summary(datasetInput%>%as.data.frame())
+        })
     
     output$hist = renderPlot({
         datasetInput <- switch(input$variable,
@@ -160,6 +161,7 @@ server <- function(input, output){
                 labs(x = input$variable) +
                 coord_flip()        }
         })
+ 
     }
 
 # Run the application 

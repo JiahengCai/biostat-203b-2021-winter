@@ -288,6 +288,297 @@ library(tidyverse)</code></pre>
 <li>Deposit a subset of chartevents data, which contains only ICU stays and the chart events we need, to a table <code>mimic-chartevent-icu</code> in the <code>mimiciv</code> database.</li>
 </ol></li>
 </ol>
+<p>Steps for 7&amp;8:</p>
+<p>Connect to the mimiciv PostgreSQL database.</p>
+<pre class="r"><code># Load configuration settings
+# host  &lt;- &#39;127.0.0.1&#39;
+# port  &lt;- &#39;5432&#39;
+user  &lt;- ifelse(Sys.info()[[&quot;nodename&quot;]] == &quot;ucla-biostat-203b&quot;, 
+                &#39;postgres&#39;, # on teaching server
+                &#39;odamadafaka&#39;)  # on my MacBook
+password &lt;- ifelse(Sys.info()[[&quot;nodename&quot;]] == &quot;ucla-biostat-203b&quot;,
+                   &#39;postgres&#39;, # on teaching server
+                   &#39;19981226Cai&#39;)  # on my MacBook   
+dbname &lt;- &#39;mimiciv&#39;
+# Connect to the database using the configuration settings
+(con &lt;- dbConnect(RPostgreSQL::PostgreSQL(), 
+                  dbname = dbname,
+                  user = user, 
+                  password = password))</code></pre>
+<pre><code>## &lt;PostgreSQLConnection&gt;</code></pre>
+<p>Set up paths to mimic data.</p>
+<pre class="r"><code>os &lt;- sessionInfo()$running
+if (str_detect(os, &quot;Linux&quot;)) {
+  mimiciv_path &lt;- &quot;/usr/203b-data/mimic-iv/&quot;
+  mimiciv_derived &lt;- &quot;/usr/203b-data/mimic-iv-derived-data/&quot;
+} else if (str_detect(os, &quot;Ubuntu&quot;)) {
+  mimiciv_path &lt;- &quot;/home/odamadafaka/mimic-iv-data/&quot;
+  mimiciv_derived &lt;- &quot;/home/odamadafaka/mimic-iv-derived-data/&quot;
+}</code></pre>
+<p>Read in the csv.gz file that contains only items we are interested.</p>
+<pre class="r"><code>labevents_filtered_itemid_tib &lt;-
+  fread(str_c(mimiciv_derived, &quot;labevents_filtered_itemid.csv.gz&quot;),
+        col.names = c(&quot;subject_id&quot;, 
+                      &quot;hadm_id&quot;, 
+                      &quot;lab_itemid&quot;, 
+                      &quot;lab_charttime&quot;, 
+                      &quot;valuenum&quot;)) %&gt;%
+  as_tibble() %&gt;%
+  mutate(lab_charttime = ymd_hms(lab_charttime)) %&gt;%
+  print(width = Inf)</code></pre>
+<pre><code>## # A tibble: 30,773,355 x 5
+##    subject_id  hadm_id lab_itemid lab_charttime       valuenum
+##         &lt;int&gt;    &lt;int&gt;      &lt;int&gt; &lt;dttm&gt;                 &lt;dbl&gt;
+##  1   12455438 24471620      51301 2151-05-06 04:45:00     16.3
+##  2   12455438 24471620      50882 2151-05-06 04:45:00     23  
+##  3   12455438 24471620      50893 2151-05-06 04:45:00      8.8
+##  4   12455438 24471620      50902 2151-05-06 04:45:00    106  
+##  5   12455438 24471620      50912 2151-05-06 04:45:00      0.7
+##  6   12455438 24471620      50960 2151-05-06 04:45:00      2.4
+##  7   12455438 24471620      50882 2151-05-06 17:16:00     23  
+##  8   12455438 24471620      50893 2151-05-06 17:16:00      8.9
+##  9   12455438 24471620      50902 2151-05-06 17:16:00    106  
+## 10   12455438 24471620      50912 2151-05-06 17:16:00      0.8
+## # … with 30,773,345 more rows</code></pre>
+<p>Read in the ICU stays data.</p>
+<pre class="r"><code>icustays_tib &lt;- 
+  fread(str_c(mimiciv_path, &quot;icu/icustays.csv.gz&quot;)) %&gt;%
+  as_tibble() %&gt;%
+  mutate(intime = ymd_hms(intime), outtime = ymd_hms(outtime)) %&gt;%
+  print(width = Inf)</code></pre>
+<pre><code>## # A tibble: 69,619 x 8
+##    subject_id  hadm_id  stay_id first_careunit                     
+##         &lt;int&gt;    &lt;int&gt;    &lt;int&gt; &lt;chr&gt;                              
+##  1   17823467 27561644 35964304 Coronary Care Unit (CCU)           
+##  2   15772648 26147926 39637383 Trauma SICU (TSICU)                
+##  3   13713711 25848902 36363748 Trauma SICU (TSICU)                
+##  4   13173210 22338446 38210858 Coronary Care Unit (CCU)           
+##  5   10213765 28522861 39765853 Trauma SICU (TSICU)                
+##  6   17530304 21776160 35848367 Trauma SICU (TSICU)                
+##  7   10297774 20364526 37788595 Coronary Care Unit (CCU)           
+##  8   16766597 21185791 39262919 Trauma SICU (TSICU)                
+##  9   17684317 28656350 36989766 Trauma SICU (TSICU)                
+## 10   15693895 21203492 34766377 Surgical Intensive Care Unit (SICU)
+##    last_careunit                       intime              outtime            
+##    &lt;chr&gt;                               &lt;dttm&gt;              &lt;dttm&gt;             
+##  1 Coronary Care Unit (CCU)            2138-05-09 05:08:00 2138-05-11 16:55:34
+##  2 Trauma SICU (TSICU)                 2146-06-18 18:35:00 2146-06-21 17:41:00
+##  3 Trauma SICU (TSICU)                 2157-09-15 15:30:00 2157-09-17 18:18:49
+##  4 Coronary Care Unit (CCU)            2178-02-12 17:13:50 2178-02-15 14:55:14
+##  5 Trauma SICU (TSICU)                 2113-04-10 14:11:00 2113-04-11 10:55:19
+##  6 Trauma SICU (TSICU)                 2129-03-21 07:09:00 2129-03-23 20:23:23
+##  7 Coronary Care Unit (CCU)            2194-05-10 21:35:40 2194-05-13 14:58:11
+##  8 Trauma SICU (TSICU)                 2115-07-11 23:15:59 2115-07-13 16:52:06
+##  9 Trauma SICU (TSICU)                 2148-04-14 22:03:00 2148-04-15 22:36:50
+## 10 Surgical Intensive Care Unit (SICU) 2147-06-02 23:31:46 2147-06-15 15:56:59
+##       los
+##     &lt;dbl&gt;
+##  1  2.49 
+##  2  2.96 
+##  3  2.12 
+##  4  2.90 
+##  5  0.864
+##  6  2.55 
+##  7  2.72 
+##  8  1.73 
+##  9  1.02 
+## 10 12.7  
+## # … with 69,609 more rows</code></pre>
+<p>Create a tibble with wanted lab items and their descriptions.</p>
+<pre class="r"><code>lab_itemid_desc_tib &lt;- 
+  tibble(labitemid = c(50912, 50971, 50983, 50902, 50882, 51221, 
+                       51301, 50931, 50960, 50893, 50813),
+         labitemdesc = c(&quot;creatinine&quot;, &quot;potassium&quot;, &quot;sodium&quot;, &quot;chloride&quot;, 
+                         &quot;bicarbonate&quot;, &quot;hematocrit&quot;, &quot;wbc&quot;, &quot;glucose&quot;, 
+                         &quot;magnesium&quot;, &quot;calcium&quot;, &quot;lactate&quot;)) %&gt;%
+  print()</code></pre>
+<pre><code>## # A tibble: 11 x 2
+##    labitemid labitemdesc
+##        &lt;dbl&gt; &lt;chr&gt;      
+##  1     50912 creatinine 
+##  2     50971 potassium  
+##  3     50983 sodium     
+##  4     50902 chloride   
+##  5     50882 bicarbonate
+##  6     51221 hematocrit 
+##  7     51301 wbc        
+##  8     50931 glucose    
+##  9     50960 magnesium  
+## 10     50893 calcium    
+## 11     50813 lactate</code></pre>
+<p>Only keep the first lab events during ICU stays. Deposit into <code>mimiciv</code> database.</p>
+<pre class="r"><code>labevents_filtered_itemid_tib %&gt;%
+  # only keep subject_id+hadm_id that are in icustays_uniq_tble
+  semi_join(icustays_tib, by = c(&quot;subject_id&quot;, &quot;hadm_id&quot;)) %&gt;%
+  # pull in the intime of that ICU stay
+  left_join(select(icustays_tib, subject_id, hadm_id, intime), 
+            by = c(&quot;subject_id&quot;, &quot;hadm_id&quot;)) %&gt;%
+  # only keep lab items after ICU intime
+  filter(lab_charttime &gt;= intime) %&gt;%
+  # group by itemid
+  group_by(subject_id, lab_itemid) %&gt;%
+  # only keep the first chartime for each item
+  # slice_min(lab_charttime, n = 1) %&gt;% # this function takes forever
+  # top_n(-1, charttime) %&gt;% # this function takes forever
+  arrange(lab_charttime, .by_group = TRUE) %&gt;%
+  slice_head(n = 1) %&gt;%
+  # do not need charttime and intime anymore
+  select(-lab_charttime, -intime) %&gt;%
+  ungroup() %&gt;%
+  # spread
+  pivot_wider(names_from = lab_itemid, values_from = valuenum) %&gt;%
+  # more informative column names
+  rename_at(vars(as.character(lab_itemid_desc_tib$labitemid)), 
+            ~lab_itemid_desc_tib$labitemdesc) %&gt;%
+  print(width = Inf) %&gt;%
+  dbWriteTable(con, &quot;mimic_labevents_icu&quot;, ., overwite = TRUE, row.names = FALSE)</code></pre>
+<pre><code>## # A tibble: 51,855 x 13
+##    subject_id  hadm_id bicarbonate calcium chloride creatinine glucose magnesium
+##         &lt;int&gt;    &lt;int&gt;       &lt;dbl&gt;   &lt;dbl&gt;    &lt;dbl&gt;      &lt;dbl&gt;   &lt;dbl&gt;     &lt;dbl&gt;
+##  1   10000032 29079034          21     9.3      102        0.5     115       2.3
+##  2   10000980 26913865          23     9.2      103        2.2     144       2  
+##  3   10001217 24597018          23     8.2      104        0.4     113       1.9
+##  4   10001725 25563031          24     9.1      106        0.8     146       1.5
+##  5   10001884 26184834          33     9.8       96        1.1     148       2.2
+##  6   10002013 23581541          23    NA        109        1.1      98       2.1
+##  7   10002155 20345487          NA    NA         NA       NA        NA      NA  
+##  8   10002155 23822395          25     8.8      106        0.9      95       2  
+##  9   10002223 22494570          26     8.7      102        0.8      88       2  
+## 10   10002428 28662225          20     7.4       98        0.8      99       1.4
+##    potassium sodium hematocrit   wbc lactate
+##        &lt;dbl&gt;  &lt;dbl&gt;      &lt;dbl&gt; &lt;dbl&gt;   &lt;dbl&gt;
+##  1       4.7    132       34.8   4.1    NA  
+##  2       4.2    139       30.8   5.4    NA  
+##  3       3.6    138       33.6  19      NA  
+##  4       3.9    140       39.1  17      NA  
+##  5       4      136       36    18.4     1.5
+##  6       4      140       28.6  18.2     3.3
+##  7      NA       NA       NA    NA       7.7
+##  8       4.5    139       37.9   5.5    NA  
+##  9       3.9    138       32.5  10.1    NA  
+## 10       3.9    129       28.7  22.4     1.6
+## # … with 51,845 more rows</code></pre>
+<pre><code>## Warning in postgresqlWriteTable(conn, name, value, ...): table
+## mimic_labevents_icu exists in database: aborting assignTable</code></pre>
+<pre><code>## [1] FALSE</code></pre>
+<p>Read in the shrunk chartevents data.</p>
+<pre class="r"><code>chartevents_filtered_itemid_tib &lt;-
+  fread(str_c(mimiciv_derived, &quot;chartevents_filtered_itemid.csv.gz&quot;),
+        col.names = c(&quot;subject_id&quot;, 
+                      &quot;hadm_id&quot;, 
+                      &quot;stay_id&quot;, 
+                      &quot;vitals_charttime&quot;, 
+                      &quot;vitals_itemid&quot;, 
+                      &quot;valuenum&quot;)) %&gt;%
+  as_tibble() %&gt;%
+  mutate(vitals_charttime = ymd_hms(vitals_charttime)) %&gt;%
+  print(width = Inf)</code></pre>
+<pre><code>## # A tibble: 30,095,996 x 6
+##    subject_id  hadm_id  stay_id vitals_charttime    vitals_itemid valuenum
+##         &lt;int&gt;    &lt;int&gt;    &lt;int&gt; &lt;dttm&gt;                      &lt;int&gt;    &lt;dbl&gt;
+##  1   10003700 28623837 35053963 2165-04-24 05:28:00        220179    152  
+##  2   10003700 28623837 35053963 2165-04-24 05:28:00        220181    110  
+##  3   10003700 28623837 35053963 2165-04-24 05:30:00        220045     65  
+##  4   10003700 28623837 35053963 2165-04-24 05:30:00        220210     14  
+##  5   10003700 28623837 35053963 2165-04-24 05:38:00        223761     97.6
+##  6   10003700 28623837 35053963 2165-04-24 06:00:00        220045     56  
+##  7   10003700 28623837 35053963 2165-04-24 06:00:00        220179    126  
+##  8   10003700 28623837 35053963 2165-04-24 06:00:00        220181     88  
+##  9   10003700 28623837 35053963 2165-04-24 06:00:00        220210     14  
+## 10   10003700 28623837 35053963 2165-04-24 06:09:00        220045     55  
+## # … with 30,095,986 more rows</code></pre>
+<pre class="r"><code>vitals_itemid_desc_tib &lt;- 
+  tibble(vitalitemid = c(220045, 220052, 220181, 220179, 
+                         220050, 223761, 220210),
+         vitalitemdesc = c(&quot;heart_rate&quot;, 
+                           &quot;arterial_blood_pressure_mean&quot;,
+                           &quot;non_invasive_blood_pressure_mean&quot;, 
+                           &quot;non_invasive_blood_pressure_systolic&quot;,
+                           &quot;arterial_blood_pressure_systolic&quot;,
+                           &quot;temperature_fahrenheit&quot;,
+                           &quot;respiratory_rate&quot;)) %&gt;%
+  print()</code></pre>
+<pre><code>## # A tibble: 7 x 2
+##   vitalitemid vitalitemdesc                       
+##         &lt;dbl&gt; &lt;chr&gt;                               
+## 1      220045 heart_rate                          
+## 2      220052 arterial_blood_pressure_mean        
+## 3      220181 non_invasive_blood_pressure_mean    
+## 4      220179 non_invasive_blood_pressure_systolic
+## 5      220050 arterial_blood_pressure_systolic    
+## 6      223761 temperature_fahrenheit              
+## 7      220210 respiratory_rate</code></pre>
+<p>Deposit into <code>mimiciv</code> database.</p>
+<pre class="r"><code>chartevents_filtered_itemid_tib %&gt;%
+  # only keep subject_id+hadm_id that are in icustays_uniq_tble
+  semi_join(icustays_tib, by = c(&quot;subject_id&quot;, &quot;hadm_id&quot;)) %&gt;%
+  # pull in the intime of that ICU stay
+  left_join(select(icustays_tib, subject_id, hadm_id, intime), 
+            by = c(&quot;subject_id&quot;, &quot;hadm_id&quot;)) %&gt;%
+  # only keep lab items after ICU intime
+  filter(vitals_charttime &gt;= intime) %&gt;%
+  # group by itemid
+  group_by(subject_id, vitals_itemid) %&gt;%
+  # only keep the first chartime for each item
+  # slice_min(lab_charttime, n = 1) %&gt;% # this function takes forever
+  # top_n(-1, charttime) %&gt;% # this function takes forever
+  arrange(vitals_charttime, .by_group = TRUE) %&gt;%
+  slice_head(n = 1) %&gt;%
+  # do not need charttime and intime anymore
+  select(-vitals_charttime, -intime) %&gt;%
+  ungroup() %&gt;%
+  # spread
+  pivot_wider(names_from = vitals_itemid, values_from = valuenum) %&gt;%
+  # more informative column names
+  rename_at(vars(as.character(vitals_itemid_desc_tib$vitalitemid)), 
+            ~vitals_itemid_desc_tib$vitalitemdesc) %&gt;%  
+  print(width = Inf) %&gt;%
+  dbWriteTable(con, &quot;mimic_chartevents_icu&quot;, ., overwite = TRUE, row.names = FALSE)</code></pre>
+<pre><code>## # A tibble: 52,765 x 10
+##    subject_id  hadm_id  stay_id heart_rate non_invasive_blood_pressure_systolic
+##         &lt;int&gt;    &lt;int&gt;    &lt;int&gt;      &lt;dbl&gt;                                &lt;dbl&gt;
+##  1   10000032 29079034 37529680         91                                   84
+##  2   10000980 26913865 36742749         77                                  150
+##  3   10001217 24597018 30327812         86                                  151
+##  4   10001725 25563031 37542711         55                                   73
+##  5   10001884 26184834 31832304         38                                  180
+##  6   10002013 23581541 37106138         80                                  104
+##  7   10002155 23822395 34599502         68                                  126
+##  8   10002223 22494570 39908879        100                                  123
+##  9   10002428 28662225 31956612        124                                   87
+## 10   10002428 28662225 39157783         NA                                   NA
+##    non_invasive_blood_pressure_mean respiratory_rate temperature_fahrenheit
+##                               &lt;dbl&gt;            &lt;dbl&gt;                  &lt;dbl&gt;
+##  1                               56               24                   98.7
+##  2                               92               23                   98  
+##  3                              104               18                   98.5
+##  4                               59               19                   97.7
+##  5                               46               10                   98.1
+##  6                               77               14                   97.2
+##  7                               78               18                   95.9
+##  8                               80               29                   98.6
+##  9                               53               25                  103. 
+## 10                               NA               NA                   NA  
+##    arterial_blood_pressure_systolic arterial_blood_pressure_mean
+##                               &lt;dbl&gt;                        &lt;dbl&gt;
+##  1                               NA                           NA
+##  2                               NA                           NA
+##  3                               NA                           NA
+##  4                               NA                           NA
+##  5                               NA                           NA
+##  6                              134                           94
+##  7                              115                           82
+##  8                               NA                           NA
+##  9                               NA                           NA
+## 10                              102                           69
+## # … with 52,755 more rows</code></pre>
+<pre><code>## Warning in postgresqlWriteTable(conn, name, value, ...): table
+## mimic_chartevents_icu exists in database: aborting assignTable</code></pre>
+<pre><code>## [1] FALSE</code></pre>
+<p>Disconnect database and clear workspace.</p>
+<pre class="r"><code>dbDisconnect(con)</code></pre>
+<pre><code>## [1] TRUE</code></pre>
+<pre class="r"><code>rm(list = ls())</code></pre>
 </div>
 <div id="q1.-compile-the-icu-cohort-in-hw2-q8-from-the-postgresql-database-mimiciv." class="section level2">
 <h2>Q1. Compile the ICU cohort in HW2 Q8 from the PostgreSQL database <code>mimiciv</code>.</h2>
@@ -325,15 +616,16 @@ dbname &lt;- &#39;mimiciv&#39;
 ## 7          mimic_icu</code></pre>
 <p>List tables in the <code>mimiciv</code> database:</p>
 <pre class="r"><code>dbListTables(con)</code></pre>
-<pre><code>##  [1] &quot;transfers&quot;          &quot;labevents&quot;          &quot;d_icd_diagnoses&quot;   
-##  [4] &quot;d_icd_procedures&quot;   &quot;emar&quot;               &quot;hcpcsevents&quot;       
-##  [7] &quot;d_labitems&quot;         &quot;pharmacy&quot;           &quot;poe_detail&quot;        
-## [10] &quot;poe&quot;                &quot;procedures_icd&quot;     &quot;patients&quot;          
-## [13] &quot;diagnoses_icd&quot;      &quot;drgcodes&quot;           &quot;emar_detail&quot;       
-## [16] &quot;d_hcpcs&quot;            &quot;microbiologyevents&quot; &quot;prescriptions&quot;     
-## [19] &quot;services&quot;           &quot;chartevents&quot;        &quot;d_items&quot;           
-## [22] &quot;datetimeevents&quot;     &quot;inputevents&quot;        &quot;outputevents&quot;      
-## [25] &quot;procedureevents&quot;    &quot;admissions&quot;         &quot;icustays&quot;</code></pre>
+<pre><code>##  [1] &quot;transfers&quot;             &quot;labevents&quot;             &quot;d_icd_diagnoses&quot;      
+##  [4] &quot;d_icd_procedures&quot;      &quot;emar&quot;                  &quot;hcpcsevents&quot;          
+##  [7] &quot;d_labitems&quot;            &quot;pharmacy&quot;              &quot;poe_detail&quot;           
+## [10] &quot;poe&quot;                   &quot;procedures_icd&quot;        &quot;patients&quot;             
+## [13] &quot;diagnoses_icd&quot;         &quot;drgcodes&quot;              &quot;emar_detail&quot;          
+## [16] &quot;d_hcpcs&quot;               &quot;microbiologyevents&quot;    &quot;prescriptions&quot;        
+## [19] &quot;services&quot;              &quot;chartevents&quot;           &quot;d_items&quot;              
+## [22] &quot;datetimeevents&quot;        &quot;inputevents&quot;           &quot;outputevents&quot;         
+## [25] &quot;procedureevents&quot;       &quot;admissions&quot;            &quot;icustays&quot;             
+## [28] &quot;mimic_labevents_icu&quot;   &quot;mimic_chartevents_icu&quot;</code></pre>
 <p>List schemas and tables in the <code>mimiciv</code> database (bash command).</p>
 <pre class="bash"><code>psql -U odamadafaka -d mimiciv -c &quot;\dt *.&quot;</code></pre>
 <pre><code>##                          List of relations
@@ -432,7 +724,9 @@ dbname &lt;- &#39;mimiciv&#39;
 ##  pg_catalog         | pg_ts_template          | table | postgres
 ##  pg_catalog         | pg_type                 | table | postgres
 ##  pg_catalog         | pg_user_mapping         | table | postgres
-## (93 rows)</code></pre>
+##  public             | mimic_chartevents_icu   | table | odamadafaka
+##  public             | mimic_labevents_icu     | table | odamadafaka
+## (95 rows)</code></pre>
 <ol start="3" style="list-style-type: decimal">
 <li>Connect to the icustays table. Note how to use <code>Id()</code> to specify the schema containing the table.</li>
 </ol>
@@ -556,13 +850,79 @@ dbname &lt;- &#39;mimiciv&#39;
 <ol start="6" style="list-style-type: decimal">
 <li>Connect to the <code>mimic_labevents_icu</code> table.</li>
 </ol>
-<pre class="r"><code># TODO
-# labevents_tble &lt;-</code></pre>
+<pre class="r"><code>labevents_tble &lt;- tbl(con, Id(schema = &quot;public&quot;, table = &quot;mimic_labevents_icu&quot;)) %&gt;%
+  print(width = Inf)</code></pre>
+<pre><code>## # Source:   table&lt;&quot;public&quot;.&quot;mimic_labevents_icu&quot;&gt; [?? x 13]
+## # Database: postgres 13.0.2 [@/var/run/postgresql:5432/mimiciv]
+##    subject_id  hadm_id bicarbonate calcium chloride creatinine glucose magnesium
+##         &lt;int&gt;    &lt;int&gt;       &lt;dbl&gt;   &lt;dbl&gt;    &lt;dbl&gt;      &lt;dbl&gt;   &lt;dbl&gt;     &lt;dbl&gt;
+##  1   10000032 29079034          21     9.3      102        0.5     115       2.3
+##  2   10000980 26913865          23     9.2      103        2.2     144       2  
+##  3   10001217 24597018          23     8.2      104        0.4     113       1.9
+##  4   10001725 25563031          24     9.1      106        0.8     146       1.5
+##  5   10001884 26184834          33     9.8       96        1.1     148       2.2
+##  6   10002013 23581541          23    NA        109        1.1      98       2.1
+##  7   10002155 20345487          NA    NA         NA       NA        NA      NA  
+##  8   10002155 23822395          25     8.8      106        0.9      95       2  
+##  9   10002223 22494570          26     8.7      102        0.8      88       2  
+## 10   10002428 28662225          20     7.4       98        0.8      99       1.4
+##    potassium sodium hematocrit   wbc lactate
+##        &lt;dbl&gt;  &lt;dbl&gt;      &lt;dbl&gt; &lt;dbl&gt;   &lt;dbl&gt;
+##  1       4.7    132       34.8   4.1    NA  
+##  2       4.2    139       30.8   5.4    NA  
+##  3       3.6    138       33.6  19      NA  
+##  4       3.9    140       39.1  17      NA  
+##  5       4      136       36    18.4     1.5
+##  6       4      140       28.6  18.2     3.3
+##  7      NA       NA       NA    NA       7.7
+##  8       4.5    139       37.9   5.5    NA  
+##  9       3.9    138       32.5  10.1    NA  
+## 10       3.9    129       28.7  22.4     1.6
+## # … with more rows</code></pre>
 <ol start="7" style="list-style-type: decimal">
 <li>Connect to <code>mimic_chartevents_icu</code> table.</li>
 </ol>
-<pre class="r"><code># TODO
-# chartevents_tble &lt;- </code></pre>
+<pre class="r"><code>chartevents_tble &lt;- tbl(con, Id(schema = &quot;public&quot;, table = &quot;mimic_chartevents_icu&quot;)) %&gt;%
+  print(width = Inf)</code></pre>
+<pre><code>## # Source:   table&lt;&quot;public&quot;.&quot;mimic_chartevents_icu&quot;&gt; [?? x 10]
+## # Database: postgres 13.0.2 [@/var/run/postgresql:5432/mimiciv]
+##    subject_id  hadm_id  stay_id heart_rate non_invasive_blood_pressure_systolic
+##         &lt;int&gt;    &lt;int&gt;    &lt;int&gt;      &lt;dbl&gt;                                &lt;dbl&gt;
+##  1   10000032 29079034 37529680         91                                   84
+##  2   10000980 26913865 36742749         77                                  150
+##  3   10001217 24597018 30327812         86                                  151
+##  4   10001725 25563031 37542711         55                                   73
+##  5   10001884 26184834 31832304         38                                  180
+##  6   10002013 23581541 37106138         80                                  104
+##  7   10002155 23822395 34599502         68                                  126
+##  8   10002223 22494570 39908879        100                                  123
+##  9   10002428 28662225 31956612        124                                   87
+## 10   10002428 28662225 39157783         NA                                   NA
+##    non_invasive_blood_pressure_mean respiratory_rate temperature_fahrenheit
+##                               &lt;dbl&gt;            &lt;dbl&gt;                  &lt;dbl&gt;
+##  1                               56               24                   98.7
+##  2                               92               23                   98  
+##  3                              104               18                   98.5
+##  4                               59               19                   97.7
+##  5                               46               10                   98.1
+##  6                               77               14                   97.2
+##  7                               78               18                   95.9
+##  8                               80               29                   98.6
+##  9                               53               25                  103. 
+## 10                               NA               NA                   NA  
+##    arterial_blood_pressure_systolic arterial_blood_pressure_mean
+##                               &lt;dbl&gt;                        &lt;dbl&gt;
+##  1                               NA                           NA
+##  2                               NA                           NA
+##  3                               NA                           NA
+##  4                               NA                           NA
+##  5                               NA                           NA
+##  6                              134                           94
+##  7                              115                           82
+##  8                               NA                           NA
+##  9                               NA                           NA
+## 10                              102                           69
+## # … with more rows</code></pre>
 <ol start="8" style="list-style-type: decimal">
 <li>Put things together. Using one chain of pipes <code>%&gt;%</code> to perform following data wrangling steps: (i) keep only the first ICU stay of each unique patient, (ii) merge in admissions and patients tables, (iii) keep adults only (age at admission &gt;= 18), (iv) merge in the labevents and chartevents tables, (v) display the SQL query, (vi) collect SQL query result into memory as a tibble, (vii) create an indicator for 30-day mortality, (viii) save the final tibble to an <code>icu_cohort.rds</code> R data file in the <code>mimiciv_shiny</code> folder.</li>
 </ol>
@@ -570,8 +930,49 @@ dbname &lt;- &#39;mimiciv&#39;
 if (!dir.exists(&quot;mimiciv_shiny&quot;)) {
   dir.create(&quot;mimiciv_shiny&quot;)
 }</code></pre>
-<pre class="r"><code># TODO
-# icustays_tble %&gt;%</code></pre>
+<pre class="r"><code>icu_cohort = icustays_tble %&gt;% 
+  group_by(subject_id) %&gt;%
+  filter(rank(intime) == 1) %&gt;%
+  ungroup() %&gt;%
+  left_join(admissions_tble, by = c(&#39;subject_id&#39;, &#39;hadm_id&#39;)) %&gt;%
+  left_join(patients_tble, by = &#39;subject_id&#39;) %&gt;%
+  mutate(age_at_adm = year(admittime) - anchor_year + anchor_age) %&gt;%
+  filter(age_at_adm &gt;= 18)%&gt;%
+  left_join(labevents_tble, by = c(&#39;subject_id&#39;, &#39;hadm_id&#39;))%&gt;%
+  left_join(chartevents_tble, by = c(&#39;subject_id&#39;, &#39;hadm_id&#39;))%&gt;%
+  show_query()%&gt;%
+  as_tibble()%&gt;%
+  group_by(subject_id) %&gt;%
+  slice(1) %&gt;%
+  ungroup() %&gt;%
+  mutate(de30 = ifelse(.$hospital_expire_flag == 1,&#39;yes&#39;,&#39;no&#39;))%&gt;%
+  saveRDS(str_c(&#39;/home/odamadafaka/biostat-203b-2021-winter/hw3/mimiciv_shiny/icu_cohort.rds&#39;))%&gt;%
+  print()</code></pre>
+<pre><code>## &lt;SQL&gt;
+## SELECT &quot;LHS&quot;.&quot;subject_id&quot; AS &quot;subject_id&quot;, &quot;LHS&quot;.&quot;hadm_id&quot; AS &quot;hadm_id&quot;, &quot;LHS&quot;.&quot;stay_id&quot; AS &quot;stay_id.x&quot;, &quot;first_careunit&quot;, &quot;last_careunit&quot;, &quot;intime&quot;, &quot;outtime&quot;, &quot;los&quot;, &quot;admittime&quot;, &quot;dischtime&quot;, &quot;deathtime&quot;, &quot;admission_type&quot;, &quot;admission_location&quot;, &quot;discharge_location&quot;, &quot;insurance&quot;, &quot;language&quot;, &quot;marital_status&quot;, &quot;ethnicity&quot;, &quot;edregtime&quot;, &quot;edouttime&quot;, &quot;hospital_expire_flag&quot;, &quot;gender&quot;, &quot;anchor_age&quot;, &quot;anchor_year&quot;, &quot;anchor_year_group&quot;, &quot;dod&quot;, &quot;age_at_adm&quot;, &quot;bicarbonate&quot;, &quot;calcium&quot;, &quot;chloride&quot;, &quot;creatinine&quot;, &quot;glucose&quot;, &quot;magnesium&quot;, &quot;potassium&quot;, &quot;sodium&quot;, &quot;hematocrit&quot;, &quot;wbc&quot;, &quot;lactate&quot;, &quot;RHS&quot;.&quot;stay_id&quot; AS &quot;stay_id.y&quot;, &quot;heart_rate&quot;, &quot;non_invasive_blood_pressure_systolic&quot;, &quot;non_invasive_blood_pressure_mean&quot;, &quot;respiratory_rate&quot;, &quot;temperature_fahrenheit&quot;, &quot;arterial_blood_pressure_systolic&quot;, &quot;arterial_blood_pressure_mean&quot;
+## FROM (SELECT &quot;LHS&quot;.&quot;subject_id&quot; AS &quot;subject_id&quot;, &quot;LHS&quot;.&quot;hadm_id&quot; AS &quot;hadm_id&quot;, &quot;stay_id&quot;, &quot;first_careunit&quot;, &quot;last_careunit&quot;, &quot;intime&quot;, &quot;outtime&quot;, &quot;los&quot;, &quot;admittime&quot;, &quot;dischtime&quot;, &quot;deathtime&quot;, &quot;admission_type&quot;, &quot;admission_location&quot;, &quot;discharge_location&quot;, &quot;insurance&quot;, &quot;language&quot;, &quot;marital_status&quot;, &quot;ethnicity&quot;, &quot;edregtime&quot;, &quot;edouttime&quot;, &quot;hospital_expire_flag&quot;, &quot;gender&quot;, &quot;anchor_age&quot;, &quot;anchor_year&quot;, &quot;anchor_year_group&quot;, &quot;dod&quot;, &quot;age_at_adm&quot;, &quot;bicarbonate&quot;, &quot;calcium&quot;, &quot;chloride&quot;, &quot;creatinine&quot;, &quot;glucose&quot;, &quot;magnesium&quot;, &quot;potassium&quot;, &quot;sodium&quot;, &quot;hematocrit&quot;, &quot;wbc&quot;, &quot;lactate&quot;
+## FROM (SELECT *
+## FROM (SELECT &quot;subject_id&quot;, &quot;hadm_id&quot;, &quot;stay_id&quot;, &quot;first_careunit&quot;, &quot;last_careunit&quot;, &quot;intime&quot;, &quot;outtime&quot;, &quot;los&quot;, &quot;admittime&quot;, &quot;dischtime&quot;, &quot;deathtime&quot;, &quot;admission_type&quot;, &quot;admission_location&quot;, &quot;discharge_location&quot;, &quot;insurance&quot;, &quot;language&quot;, &quot;marital_status&quot;, &quot;ethnicity&quot;, &quot;edregtime&quot;, &quot;edouttime&quot;, &quot;hospital_expire_flag&quot;, &quot;gender&quot;, &quot;anchor_age&quot;, &quot;anchor_year&quot;, &quot;anchor_year_group&quot;, &quot;dod&quot;, EXTRACT(year FROM &quot;admittime&quot;) - &quot;anchor_year&quot; + &quot;anchor_age&quot; AS &quot;age_at_adm&quot;
+## FROM (SELECT &quot;LHS&quot;.&quot;subject_id&quot; AS &quot;subject_id&quot;, &quot;hadm_id&quot;, &quot;stay_id&quot;, &quot;first_careunit&quot;, &quot;last_careunit&quot;, &quot;intime&quot;, &quot;outtime&quot;, &quot;los&quot;, &quot;admittime&quot;, &quot;dischtime&quot;, &quot;deathtime&quot;, &quot;admission_type&quot;, &quot;admission_location&quot;, &quot;discharge_location&quot;, &quot;insurance&quot;, &quot;language&quot;, &quot;marital_status&quot;, &quot;ethnicity&quot;, &quot;edregtime&quot;, &quot;edouttime&quot;, &quot;hospital_expire_flag&quot;, &quot;gender&quot;, &quot;anchor_age&quot;, &quot;anchor_year&quot;, &quot;anchor_year_group&quot;, &quot;dod&quot;
+## FROM (SELECT &quot;LHS&quot;.&quot;subject_id&quot; AS &quot;subject_id&quot;, &quot;LHS&quot;.&quot;hadm_id&quot; AS &quot;hadm_id&quot;, &quot;stay_id&quot;, &quot;first_careunit&quot;, &quot;last_careunit&quot;, &quot;intime&quot;, &quot;outtime&quot;, &quot;los&quot;, &quot;admittime&quot;, &quot;dischtime&quot;, &quot;deathtime&quot;, &quot;admission_type&quot;, &quot;admission_location&quot;, &quot;discharge_location&quot;, &quot;insurance&quot;, &quot;language&quot;, &quot;marital_status&quot;, &quot;ethnicity&quot;, &quot;edregtime&quot;, &quot;edouttime&quot;, &quot;hospital_expire_flag&quot;
+## FROM (SELECT &quot;subject_id&quot;, &quot;hadm_id&quot;, &quot;stay_id&quot;, &quot;first_careunit&quot;, &quot;last_careunit&quot;, &quot;intime&quot;, &quot;outtime&quot;, &quot;los&quot;
+## FROM (SELECT &quot;subject_id&quot;, &quot;hadm_id&quot;, &quot;stay_id&quot;, &quot;first_careunit&quot;, &quot;last_careunit&quot;, &quot;intime&quot;, &quot;outtime&quot;, &quot;los&quot;, RANK() OVER (PARTITION BY &quot;subject_id&quot; ORDER BY &quot;intime&quot;) AS &quot;q01&quot;
+## FROM &quot;mimic_icu&quot;.&quot;icustays&quot;) &quot;q01&quot;
+## WHERE (&quot;q01&quot; = 1.0)) &quot;LHS&quot;
+## LEFT JOIN &quot;mimic_core&quot;.&quot;admissions&quot; AS &quot;RHS&quot;
+## ON (&quot;LHS&quot;.&quot;subject_id&quot; = &quot;RHS&quot;.&quot;subject_id&quot; AND &quot;LHS&quot;.&quot;hadm_id&quot; = &quot;RHS&quot;.&quot;hadm_id&quot;)
+## ) &quot;LHS&quot;
+## LEFT JOIN &quot;mimic_core&quot;.&quot;patients&quot; AS &quot;RHS&quot;
+## ON (&quot;LHS&quot;.&quot;subject_id&quot; = &quot;RHS&quot;.&quot;subject_id&quot;)
+## ) &quot;q01&quot;) &quot;q02&quot;
+## WHERE (&quot;age_at_adm&quot; &gt;= 18.0)) &quot;LHS&quot;
+## LEFT JOIN &quot;public&quot;.&quot;mimic_labevents_icu&quot; AS &quot;RHS&quot;
+## ON (&quot;LHS&quot;.&quot;subject_id&quot; = &quot;RHS&quot;.&quot;subject_id&quot; AND &quot;LHS&quot;.&quot;hadm_id&quot; = &quot;RHS&quot;.&quot;hadm_id&quot;)
+## ) &quot;LHS&quot;
+## LEFT JOIN &quot;public&quot;.&quot;mimic_chartevents_icu&quot; AS &quot;RHS&quot;
+## ON (&quot;LHS&quot;.&quot;subject_id&quot; = &quot;RHS&quot;.&quot;subject_id&quot; AND &quot;LHS&quot;.&quot;hadm_id&quot; = &quot;RHS&quot;.&quot;hadm_id&quot;)
+## 
+## NULL</code></pre>
 <p>Close database connection and clear workspace.</p>
 <pre class="r"><code>dbDisconnect(con)</code></pre>
 <pre><code>## [1] TRUE</code></pre>
