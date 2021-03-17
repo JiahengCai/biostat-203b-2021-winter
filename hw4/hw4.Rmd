@@ -1,0 +1,329 @@
+---
+title: "Biostat 203B Homework 4"
+subtitle: Due Mar 19 @ 11:59PM
+author: Jiaheng Cai
+output:
+  # ioslides_presentation: default
+  html_document:
+    toc: true
+    toc_depth: 4
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(echo = TRUE, cache = TRUE)
+```
+                      
+Display machine information:
+```{r}
+sessionInfo()
+```
+
+Load database libraries and the tidyverse frontend:
+```{r}
+library(tidyverse)
+library(lubridate)
+library(miceRanger)
+library(caret)
+library(randomForest)
+library(keras)
+```
+
+## Q1. Missing data
+
+Through the Shiny app developed in HW3, we observe abundant missing values in 
+the MIMIC-IV ICU cohort we created. In this question, we use multiple imputation 
+to obtain a data set without missing values.
+
+0. Read following tutorials on the R package miceRanger for imputation: <https://github.com/farrellday/miceRanger>, <https://cran.r-project.org/web/packages/miceRanger/vignettes/miceAlgorithm.html>.
+
+    A more thorough book treatment of the practical imputation strategies is the 
+    book [*_Flexible Imputation of Missing Data_*](https://stefvanbuuren.name/fimd/) 
+    by Stef van Buuren. 
+
+1. Explain the jargon MCAR, MAR, and MNAR.
+
+MCAR (Missing complete at random): the probability of being missing is the same 
+for all cases, we say the data is MCAR. MCAR implies that causes of missing data 
+are unrelated to the data. 
+
+MAR (Missing at random): the probability of being missing is the same only within 
+groups defined by observed data. 
+
+MNAR (Missing not at random): Not MCAR nor MAR. The probability of being missing 
+varies for reasons that are unknown to us.
+
+2. Explain in a couple of sentences how the Multiple Imputation by Chained 
+Equations (MICE) work.
+
+First, the algorithm will find a variable B which has strong correlation with 
+the variable with missing data A, also another variable C. Regress A on B and 
+obtain R^2. Randomly fill the data in the table, the R^2 will change since the 
+fill in data are totally random. After that, use random forest to predict A by 
+B and C. After, use A and C to predict B. Do this process repeatedly after the 
+new R^2 is approaching the original R^2. 
+
+3. Perform a data quality check of the ICU stays data. Discard variables with 
+substantial missingness, say >5000 `NA`s. Replace apparent data entry errors by 
+`NA`s.
+
+```{r}
+icu_cohort_tib = 
+  readRDS('/home/odamadafaka/biostat-203b-2021-winter/hw4/icu_cohort.rds') %>% 
+  as_tibble() %>%
+  subset(select = -c(stay_id.x))
+
+icu_cohort_tib = subset(icu_cohort_tib, select = -c(deathtime, edregtime, 
+                                                    edouttime, dod, lactate, arterial_blood_pressure_systolic, arterial_blood_pressure_mean))
+
+#remove false temp
+icu_cohort_tib$temperature_fahrenheit[
+  icu_cohort_tib$temperature_fahrenheit <= 95] = NA
+
+#remove false res_rate
+Q <- quantile(icu_cohort_tib$respiratory_rate, probs = c(.25, .75), na.rm = TRUE)
+iqr <- IQR(icu_cohort_tib$respiratory_rate, na.rm = TRUE)
+up <-  Q[2] + 1.5 * iqr # Upper Range  
+low <- Q[1] - 1.5 * iqr # Lower Range
+icu_cohort_tib$respiratory_rate[icu_cohort_tib$respiratory_rate <= low |
+                                  icu_cohort_tib$respiratory_rate >= up] = NA
+
+#remove false nibpm
+Q <- quantile(icu_cohort_tib$non_invasive_blood_pressure_mean, probs = c(.25, .75), 
+              na.rm = TRUE)
+iqr <- IQR(icu_cohort_tib$non_invasive_blood_pressure_mean, na.rm = TRUE)
+up <-  Q[2] + 1.5 * iqr # Upper Range  
+low <- Q[1] - 1.5 * iqr # Lower Range
+icu_cohort_tib$non_invasive_blood_pressure_mean[
+  icu_cohort_tib$non_invasive_blood_pressure_mean <= low | 
+    icu_cohort_tib$non_invasive_blood_pressure_mean >= up] = NA
+
+#remove false nibps
+Q <- quantile(icu_cohort_tib$non_invasive_blood_pressure_systolic, probs = 
+                c(.25, .75), na.rm = TRUE)
+iqr <- IQR(icu_cohort_tib$non_invasive_blood_pressure_systolic, na.rm = TRUE)
+up <-  Q[2] + 1.5 * iqr # Upper Range  
+low <- Q[1] - 1.5 * iqr # Lower Range
+icu_cohort_tib$non_invasive_blood_pressure_systolic[
+  icu_cohort_tib$non_invasive_blood_pressure_systolic <= low | 
+    icu_cohort_tib$non_invasive_blood_pressure_systolic >= up] = NA
+
+#remove false heart rate
+Q <- quantile(icu_cohort_tib$heart_rate, probs=c(.25, .75), na.rm = TRUE)
+iqr <- IQR(icu_cohort_tib$heart_rate, na.rm = TRUE)
+up <-  Q[2] + 1.5 * iqr # Upper Range  
+low <- Q[1] - 1.5 * iqr # Lower Range
+icu_cohort_tib$heart_rate[icu_cohort_tib$heart_rate <= low | 
+                            icu_cohort_tib$heart_rate >= up] = NA
+
+#remove false wbc
+Q <- quantile(icu_cohort_tib$wbc, probs = c(.25, .75), na.rm = TRUE)
+iqr <- IQR(icu_cohort_tib$wbc, na.rm = TRUE)
+up <-  Q[2] + 1.5 * iqr # Upper Range  
+low <- Q[1] - 1.5 * iqr # Lower Range
+icu_cohort_tib$wbc[icu_cohort_tib$wbc <= low | icu_cohort_tib$wbc >= up] = NA
+
+#remove false hematocrit
+Q <- quantile(icu_cohort_tib$hematocrit, probs=c(.25, .75), na.rm = TRUE)
+iqr <- IQR(icu_cohort_tib$hematocrit, na.rm = TRUE)
+up <-  Q[2] + 1.5 * iqr # Upper Range  
+low <- Q[1] - 1.5 * iqr # Lower Range
+icu_cohort_tib$hematocrit[icu_cohort_tib$hematocrit <= low | 
+                            icu_cohort_tib$hematocrit >= up] = NA
+
+#remove false hematocrit
+Q <- quantile(icu_cohort_tib$hematocrit, probs=c(.25, .75), na.rm = TRUE)
+iqr <- IQR(icu_cohort_tib$hematocrit, na.rm = TRUE)
+up <-  Q[2] + 1.5 * iqr # Upper Range  
+low <- Q[1] - 1.5 * iqr # Lower Range
+icu_cohort_tib$hematocrit[icu_cohort_tib$hematocrit <= low | 
+                            icu_cohort_tib$hematocrit >= up] = NA
+
+#remove false sodium
+Q <- quantile(icu_cohort_tib$sodium, probs=c(.25, .75), na.rm = TRUE)
+iqr <- IQR(icu_cohort_tib$sodium, na.rm = TRUE)
+up <-  Q[2] + 1.5 * iqr # Upper Range  
+low <- Q[1] - 1.5 * iqr # Lower Range
+icu_cohort_tib$sodium[icu_cohort_tib$sodium <= low | 
+                        icu_cohort_tib$sodium >= up] = NA
+
+#remove false potassium
+Q <- quantile(icu_cohort_tib$potassium, probs=c(.25, .75), na.rm = TRUE)
+iqr <- IQR(icu_cohort_tib$potassium, na.rm = TRUE)
+up <-  Q[2] + 1.5 * iqr # Upper Range  
+low <- Q[1] - 1.5 * iqr # Lower Range
+icu_cohort_tib$potassium[icu_cohort_tib$potassium <= low | 
+                           icu_cohort_tib$potassium >= up]=NA
+
+#remove false magenesium
+Q <- quantile(icu_cohort_tib$magnesium, probs=c(.25, .75), na.rm = TRUE)
+iqr <- IQR(icu_cohort_tib$magnesium, na.rm = TRUE)
+up <-  Q[2] + 1.5 * iqr # Upper Range  
+low <- Q[1] - 1.5 * iqr # Lower Range
+icu_cohort_tib$magnesium[icu_cohort_tib$magnesium <= low | 
+                           icu_cohort_tib$magnesium >= up]=NA
+
+#remove false glucose
+Q <- quantile(icu_cohort_tib$glucose, probs=c(.25, .75), na.rm = TRUE)
+iqr <- IQR(icu_cohort_tib$glucose, na.rm = TRUE)
+up <-  Q[2] + 1.5 * iqr # Upper Range  
+low <- Q[1] - 1.5*iqr # Lower Range
+icu_cohort_tib$glucose[icu_cohort_tib$glucose <= low | 
+                         icu_cohort_tib$glucose >= up]=NA
+
+#remove false cretinine
+Q <- quantile(icu_cohort_tib$creatinine, probs=c(.25, .75), na.rm = TRUE)
+iqr <- IQR(icu_cohort_tib$creatinine, na.rm = TRUE)
+up <-  Q[2] + 1.5 * iqr # Upper Range  
+low <- Q[1] - 1.5 * iqr # Lower Range
+icu_cohort_tib$creatinine[icu_cohort_tib$creatinine <= low | 
+                            icu_cohort_tib$creatinine >= up]=NA
+
+#remove false chloride
+Q <- quantile(icu_cohort_tib$chloride, probs=c(.25, .75), na.rm = TRUE)
+iqr <- IQR(icu_cohort_tib$chloride, na.rm = TRUE)
+up <-  Q[2] + 1.5 * iqr # Upper Range  
+low <- Q[1] - 1.5*iqr # Lower Range
+icu_cohort_tib$chloride[icu_cohort_tib$chloride <= low | 
+                          icu_cohort_tib$chloride >= up]=NA
+
+#remove false calcium
+Q <- quantile(icu_cohort_tib$calcium, probs=c(.25, .75), na.rm = TRUE)
+iqr <- IQR(icu_cohort_tib$calcium, na.rm = TRUE)
+up <-  Q[2] + 1.5 * iqr # Upper Range  
+low <- Q[1] - 1.5 * iqr # Lower Range
+icu_cohort_tib$calcium[icu_cohort_tib$calcium <= low | 
+                         icu_cohort_tib$calcium >= up] = NA
+
+#remove false bicarbonate
+Q <- quantile(icu_cohort_tib$bicarbonate, probs=c(.25, .75), na.rm = TRUE)
+iqr <- IQR(icu_cohort_tib$bicarbonate, na.rm = TRUE)
+up <-  Q[2] + 1.5 * iqr # Upper Range  
+low <- Q[1] - 1.5 * iqr # Lower Range
+icu_cohort_tib$bicarbonate[icu_cohort_tib$bicarbonate <= low | 
+                             icu_cohort_tib$bicarbonate >= up] = NA
+
+icu_cohort_tib = subset(icu_cohort_tib, select = -c(creatinine))
+summary(icu_cohort_tib)
+```
+
+4. Impute missing values by `miceRanger` (request $m=3$ datasets). This step is 
+very computational intensive. Make sure to save the imputation results as a file.
+
+```{r}
+seqTime <- system.time(
+  miceObj <- miceRanger(icu_cohort_tib, m=3, returnModels = TRUE, verbose=FALSE, 
+                        max.depth = 10))
+dataList <- completeData(miceObj)
+head(dataList[[1]])
+```
+
+5. Make imputation diagnostic plots and explain what they mean.
+
+```{r}
+plotDistributions(miceObj,vars='allNumeric')
+```
+This density plot compares the original dataset and the imputed dataset. If the 
+original numeric data plot is not matching up with the imputed value, it suggests 
+that the data is not missing at completely random. 
+
+```{r}
+plotCorrelations(miceObj,vars='allNumeric')
+```
+The boxplot displays the Pearson's correlation coefficient over iteration. It's 
+used to determine the convergence over iterations.  
+
+```{r}
+plotVarConvergence(miceObj,vars='allNumeric')
+```
+This plot is used to see the convergence of the imputation. Variables with 
+divergent line spread may need more iteration. 
+(due to the computational power, I will not do more iterations. )
+
+```{r}
+plotModelError(miceObj,vars='allNumeric')
+```
+This plot also gives the convergence rate of each variable. 
+
+6. Obtain a complete data set by averaging the 3 imputed data sets.
+```{r}
+data = as.data.frame(data.matrix(dataList$Dataset_1) + 
+                       data.matrix(dataList$Dataset_2) + 
+                       data.matrix(dataList$Dataset_3)) / 3
+# saveRDS(data,str_c('/home/odamadafaka/biostat-203b-2021-winter/hw4/data.rds'))
+```
+
+## Q2. Predicting 30-day mortality
+
+Develop at least two analytic approaches for predicting the 30-day mortality of 
+patients admitted to ICU using demographic information (gender, age, marital 
+status, ethnicity), first lab measurements during ICU stay, and first vital 
+measurements during ICU stay. For example, you can use (1) logistic regression 
+(`glm()` function), (2) logistic regression with lasso penalty (glmnet package), 
+(3) random forest (randomForest package), or (4) neural network.
+
+1. Partition data into 80% training set and 20% test set. Stratify partitioning 
+according the 30-day mortality status.
+
+```{r}
+data = read_rds('data.rds')
+
+
+train.index <- createDataPartition(data$de30, p = .8, list = FALSE)
+train <- data[ train.index,]
+test  <- data[-train.index,]
+```
+2. Train the models using the training set.
+```{r}
+y_train = train$de30
+x_train = as.data.frame(cbind(as.data.frame(train$gender), train$anchor_age, train$marital_status, train$ethnicity,
+            train$potassium, train$sodium,train$chloride, train$bicarbonate, train$hematocrit,
+            train$wbc, train$glucose, train$magnesium, train$calcium, train$heart_rate,train$non_invasive_blood_pressure_mean,train$non_invasive_blood_pressure_systolic,
+train$temperature_fahrenheit,train$respiratory_rate))
+```
+
+```{r}
+
+mlp <- keras_model_sequential() 
+mlp %>% 
+  layer_dense(units = 256, activation = 'relu', input_shape = c(784)) %>% 
+  layer_dropout(rate = 0.4) %>% 
+  layer_dense(units = 128, activation = 'relu') %>%
+  layer_dropout(rate = 0.3) %>%
+  layer_dense(units = 10, activation = 'softmax')
+summary(mlp)
+
+mlp %>% compile(
+  loss = 'categorical_crossentropy',
+  optimizer = optimizer_rmsprop(),
+  metrics = 'accuracy'
+)
+
+```
+
+```{r}
+x_train = as.matrix(x_train)
+y_train = as.matrix(y_train)
+history <- mlp %>% fit(
+  x_train, y_train, 
+  epochs = 30, batch_size = 128, 
+  validation_split = 0.2)
+```
+
+```{r}
+train$de30 = as.factor(train$de30)
+rf <- randomForest(
+  de30 ~  gender+ anchor_age+ marital_status+ ethnicity+ potassium+ sodium+chloride+ bicarbonate+ hematocrit+ wbc+ glucose+ magnesium+ calcium+heart_rate+non_invasive_blood_pressure_mean+non_invasive_blood_pressure_systolic+
+temperature_fahrenheit+respiratory_rate,
+  data=train
+)
+```
+
+```{r}
+rf$confusion[, 'class.error']
+predict(rf, test, type = 'response')
+```
+
+3. Compare model prediction performance on the test set.
+```{r}
+predict(fit, test,  type = c("link", "response", "terms"),)
+```
