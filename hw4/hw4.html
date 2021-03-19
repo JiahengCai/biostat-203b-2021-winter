@@ -654,7 +654,7 @@ x_train = as.matrix(cbind(train$gender, train$anchor_age, train$marital_status,
                         train$heart_rate, train$non_invasive_blood_pressure_mean, 
                         train$non_invasive_blood_pressure_systolic,
                         train$temperature_fahrenheit,train$respiratory_rate))
-y_test = as.numeric(test$de30)
+y_test = as.matrix(test$de30)
 x_test = as.matrix(cbind(test$gender, test$anchor_age, test$marital_status,
                           test$ethnicity, test$potassium, test$sodium,
                           test$chloride, test$bicarbonate, test$hematocrit,
@@ -665,7 +665,7 @@ x_test = as.matrix(cbind(test$gender, test$anchor_age, test$marital_status,
 y_train[y_train == 2] = 0
 y_test[y_test == 2] = 0</code></pre>
 <p>Log:</p>
-<pre class="r"><code>log = glm(as.numeric(y_train) ~ anchor_age + 
+<pre class="r"><code>log = glm(y_train ~ anchor_age + 
                      potassium + sodium + chloride + bicarbonate + hematocrit + 
                      wbc + glucose + magnesium + 
                      calcium+heart_rate 
@@ -676,11 +676,10 @@ y_test[y_test == 2] = 0</code></pre>
 summary(log)</code></pre>
 <pre><code>## 
 ## Call:
-## glm(formula = as.numeric(y_train) ~ anchor_age + potassium + 
-##     sodium + chloride + bicarbonate + hematocrit + wbc + glucose + 
-##     magnesium + calcium + heart_rate + non_invasive_blood_pressure_systolic + 
-##     temperature_fahrenheit + respiratory_rate, family = &quot;binomial&quot;, 
-##     data = train)
+## glm(formula = y_train ~ anchor_age + potassium + sodium + chloride + 
+##     bicarbonate + hematocrit + wbc + glucose + magnesium + calcium + 
+##     heart_rate + non_invasive_blood_pressure_systolic + temperature_fahrenheit + 
+##     respiratory_rate, family = &quot;binomial&quot;, data = train)
 ## 
 ## Deviance Residuals: 
 ##     Min       1Q   Median       3Q      Max  
@@ -713,8 +712,10 @@ summary(log)</code></pre>
 ## AIC: 23111
 ## 
 ## Number of Fisher Scoring iterations: 5</code></pre>
-<pre class="r"><code>train$de30 = as.factor(train$de30)
-rf &lt;- randomForest(de30 ~  gender + anchor_age + marital_status + ethnicity + 
+<p>log-lasso:</p>
+<pre class="r"><code>lasso = glmnet(x_train, y_train, family=&quot;binomial&quot;, alpha=1)</code></pre>
+<p>random forest:</p>
+<pre class="r"><code>rf &lt;- randomForest(as.factor(y_train) ~  gender + anchor_age + marital_status + ethnicity + 
                      potassium + sodium + chloride + bicarbonate + hematocrit + 
                      wbc + glucose + magnesium + 
                      calcium+heart_rate + 
@@ -733,6 +734,8 @@ confusionMatrix((as.matrix(predicted.classes)),
 ## 0 61  976
 ## 1 45 8927</code></pre>
 <p>precision: death in 30 days: .082 live in 30 days: .9919</p>
+<p>log-lasso: (for some reason, i kept getting a large matrix as result (10009*55))</p>
+<pre class="r"><code>predictionlogla = predict.glmnet(lasso, x_test)</code></pre>
 <p>Random Forest:</p>
 <pre class="r"><code>rf$confusion[, &#39;class.error&#39;]</code></pre>
 <pre><code>##           1           2 
@@ -742,7 +745,8 @@ confusionMatrix((as.matrix(predictionrf)), (as.matrix(y_test)))</code></pre>
 <pre><code>##      1  2
 ## 0  983 54
 ## 1 8949 23</code></pre>
-<p>precision: death in 30 days: .048 live in 30 days: .9965</p>
+<p>precision: death in 30 days: .053 live in 30 days: .9980</p>
+<p>Note: keras kept giving error message about miniconda, might be a problem from compatibility.</p>
 </div>
 
 

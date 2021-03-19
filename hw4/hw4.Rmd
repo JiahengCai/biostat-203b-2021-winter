@@ -286,7 +286,7 @@ x_train = as.matrix(cbind(train$gender, train$anchor_age, train$marital_status,
                         train$heart_rate, train$non_invasive_blood_pressure_mean, 
                         train$non_invasive_blood_pressure_systolic,
                         train$temperature_fahrenheit,train$respiratory_rate))
-y_test = as.numeric(test$de30)
+y_test = as.matrix(test$de30)
 x_test = as.matrix(cbind(test$gender, test$anchor_age, test$marital_status,
                           test$ethnicity, test$potassium, test$sodium,
                           test$chloride, test$bicarbonate, test$hematocrit,
@@ -300,7 +300,7 @@ y_test[y_test == 2] = 0
 
 Log:
 ```{r}
-log = glm(as.numeric(y_train) ~ anchor_age + 
+log = glm(y_train ~ anchor_age + 
                      potassium + sodium + chloride + bicarbonate + hematocrit + 
                      wbc + glucose + magnesium + 
                      calcium+heart_rate 
@@ -311,9 +311,14 @@ log = glm(as.numeric(y_train) ~ anchor_age +
 summary(log)
 ```
 
+log-lasso:
+```{r, eval=F}
+lasso = glmnet(x_train, y_train, family="binomial", alpha=1)
+```
+
+random forest:
 ```{r}
-train$de30 = as.factor(train$de30)
-rf <- randomForest(de30 ~  gender + anchor_age + marital_status + ethnicity + 
+rf <- randomForest(as.factor(y_train) ~  gender + anchor_age + marital_status + ethnicity + 
                      potassium + sodium + chloride + bicarbonate + hematocrit + 
                      wbc + glucose + magnesium + 
                      calcium+heart_rate + 
@@ -334,6 +339,11 @@ confusionMatrix((as.matrix(predicted.classes)),
 ```
 precision: death in 30 days: .082
           live in 30 days: .9919  
+          
+log-lasso: (for some reason, i kept getting a large matrix as result (10009*55))
+```{r, eval=FALSE}
+predictionlogla = predict.glmnet(lasso, x_test)
+```
 
 Random Forest:
 ```{r}
@@ -341,5 +351,8 @@ rf$confusion[, 'class.error']
 predictionrf = predict(rf, test)
 confusionMatrix((as.matrix(predictionrf)), (as.matrix(y_test)))
 ```
-precision: death in 30 days: .048
-          live in 30 days: .9965  
+precision: death in 30 days: .053
+          live in 30 days: .9980  
+          
+Note: keras kept giving error message about miniconda, might be a problem from 
+compatibility. 
